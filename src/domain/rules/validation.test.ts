@@ -22,6 +22,12 @@ describe('validateRecord', () => {
     expect(codes(record, false)).not.toContain('MISSING_COUNTRY')
   })
 
+  it('el pais global de la sesion cubre a los registros que no lo traen', () => {
+    const record = makeRecord({ location_name: 'Toks Plaza Universidad', city: 'CDMX' })
+    const issues = validateRecord(record, { requireCountry: true, hasSessionCountry: true })
+    expect(issues.map((issue) => issue.code)).not.toContain('MISSING_COUNTRY')
+  })
+
   it('rechaza registros sin nada que buscar', () => {
     const record = makeRecord({ city: 'Barranquilla', country: 'Colombia' })
     expect(codes(record)).toContain('NOT_GEOCODABLE')

@@ -20,6 +20,8 @@ export interface SheetPreview {
   readonly sampleRows: RawGrid
   /** Total de filas de datos disponibles, no solo las de la muestra. */
   readonly totalDataRows: number
+  /** Filas que generarian un registro: las totalmente en blanco se descartan. */
+  readonly nonBlankDataRows: number
   /** Indices de columna cuyas celdas estan todas vacias. */
   readonly emptyColumnIndexes: readonly number[]
 }

@@ -22,12 +22,14 @@ export interface ValidationIssue {
 }
 
 export interface ValidationOptions {
-  /**
-   * True cuando el usuario definio que el pais es obligatorio para restringir
-   * las busquedas. Si hay un pais global configurado, la interfaz lo aplica
-   * antes de validar y esta comprobacion deja de fallar.
-   */
+  /** True cuando el pais es obligatorio para restringir las busquedas. */
   readonly requireCountry: boolean
+  /**
+   * True si la sesion tiene un pais global definido. Ese pais restringe la
+   * busqueda aunque el registro no lo traiga, asi que en ese caso no falta
+   * nada (spec seccion 8).
+   */
+  readonly hasSessionCountry?: boolean
 }
 
 const DEFAULT_OPTIONS: ValidationOptions = { requireCountry: true }
@@ -57,7 +59,7 @@ export function validateRecord(
     ]
   }
 
-  if (options.requireCountry && !has(record, 'country')) {
+  if (options.requireCountry && !has(record, 'country') && options.hasSessionCountry !== true) {
     issues.push({
       code: 'MISSING_COUNTRY',
       level: 'error',

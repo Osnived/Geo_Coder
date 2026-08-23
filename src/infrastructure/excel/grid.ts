@@ -130,6 +130,7 @@ export function buildPreview(
     headers,
     sampleRows: dataRows.slice(0, sampleSize),
     totalDataRows: dataRows.length,
+    nonBlankDataRows: dataRows.filter((row) => !isBlankRow(row)).length,
     emptyColumnIndexes: findEmptyColumns(dataRows, columnCount),
   }
 }

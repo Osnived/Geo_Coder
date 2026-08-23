@@ -1,10 +1,82 @@
+import { useEffect, useState } from 'react'
+
+import { persistenceAvailable, useAppStore } from '@/app/store'
+import { Callout } from '@/components/ui/primitives'
+import { ImportPanel } from '@/features/import/ImportPanel'
+import { ManualEntryForm } from '@/features/manual-entry/ManualEntryForm'
+import { RecordsTable } from '@/features/results/RecordsTable'
+import { CountrySelector } from '@/features/settings/CountrySelector'
+import { cx } from '@/shared/cx'
+
+type Tab = 'import' | 'manual' | 'records'
+
+const TABS: { id: Tab; label: string }[] = [
+  { id: 'import', label: 'Importar Excel' },
+  { id: 'manual', label: 'Entrada manual' },
+  { id: 'records', label: 'Registros' },
+]
+
 export function App() {
+  const hydrate = useAppStore((state) => state.hydrate)
+  const isHydrated = useAppStore((state) => state.isHydrated)
+  const recordCount = useAppStore((state) => state.records.length)
+  const [tab, setTab] = useState<Tab>('import')
+
+  useEffect(() => {
+    void hydrate()
+  }, [hydrate])
+
   return (
-    <div className="mx-auto flex min-h-full max-w-3xl flex-col justify-center gap-3 px-6 py-16">
-      <h1 className="text-2xl font-semibold tracking-tight">Geolocator</h1>
-      <p className="text-ink-muted text-sm">
-        Scaffold inicial. MVP 1: importacion, mapeo de columnas, entrada manual y normalizacion.
-      </p>
+    <div className="mx-auto flex min-h-full max-w-7xl flex-col gap-4 px-4 py-6">
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">Geolocator</h1>
+          <p className="text-ink-muted text-xs">
+            MVP 1 — importacion, mapeo, entrada manual y normalizacion.
+          </p>
+        </div>
+        <CountrySelector />
+      </header>
+
+      {!persistenceAvailable ? (
+        <Callout tone="warn">
+          IndexedDB no esta disponible en este navegador. La sesion funcionara, pero no se guardara
+          al recargar la pagina.
+        </Callout>
+      ) : null}
+
+      <nav className="border-border-subtle bg-surface flex gap-1 rounded-lg border p-1">
+        {TABS.map((entry) => (
+          <button
+            key={entry.id}
+            type="button"
+            onClick={() => {
+              setTab(entry.id)
+            }}
+            className={cx(
+              'flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+              tab === entry.id
+                ? 'bg-accent text-white'
+                : 'text-ink-muted hover:bg-surface-sunken hover:text-ink',
+            )}
+          >
+            {entry.label}
+            {entry.id === 'records' && recordCount > 0 ? ` (${String(recordCount)})` : ''}
+          </button>
+        ))}
+      </nav>
+
+      <main>
+        {!isHydrated ? (
+          <p className="text-ink-muted py-10 text-center text-sm">Cargando sesion...</p>
+        ) : (
+          <>
+            {tab === 'import' ? <ImportPanel /> : null}
+            {tab === 'manual' ? <ManualEntryForm /> : null}
+            {tab === 'records' ? <RecordsTable /> : null}
+          </>
+        )}
+      </main>
     </div>
   )
 }
