@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 
 import type { NormalizedField } from '@/domain/models/fields'
+import type { GeocodeQuery } from '@/domain/models/geocode'
 import type { EstablishmentRecord } from '@/domain/models/record'
 import type { RecordStatus } from '@/domain/models/status'
 import { suggestColumnMapping } from '@/domain/rules/columnMatching'
@@ -13,7 +14,13 @@ import {
 import { isExcelReadError, readWorkbookFile, type SheetPreview } from '@/infrastructure/excel'
 import { newId, nowIso } from '@/shared/id'
 
-import { geocodeRecord, type CandidateScorer } from '@/domain/services/geocoderService'
+import {
+  geocodeRecord,
+  type CandidateScorer,
+  type GeocodeOptions,
+  type GeocodeOutcome,
+} from '@/domain/services/geocoderService'
+import { resolveCountry } from '@/domain/services/queryBuilder'
 import {
   acceptResult as accept,
   rejectResult as reject,
@@ -28,6 +35,7 @@ import {
   SCORING_WEIGHTS,
 } from '@/shared/config/geocoding'
 
+import { DEFAULT_AI_SETTINGS, getAssistant, type AiSettings } from './assistant'
 import { getProviders } from './geocoder'
 import { getRepository } from './repository'
 import type { AppState } from './types'
@@ -64,12 +72,52 @@ export function setScorer(next: CandidateScorer): void {
  */
 const AUTO_TARGET_STATUSES: readonly RecordStatus[] = ['PENDING', 'ERROR']
 
+/**
+ * Reintento asistido por IA. Solo entra en juego cuando la busqueda
+ * determinista se ha quedado sin opciones (spec seccion 22).
+ */
+async function retryWithAssistant(
+  record: EstablishmentRecord,
+  previous: GeocodeOutcome,
+  options: Omit<GeocodeOptions, 'queries'>,
+  ai: AiSettings,
+  signal: AbortSignal,
+): Promise<GeocodeOutcome> {
+  const tried = previous.attempts.map((attempt) => attempt.query.text)
+  const suggestions = await getAssistant(ai).suggestQueries(record, tried, signal)
+  if (suggestions.length === 0) return previous
+
+  const country = resolveCountry(record, options.sessionCountry ?? null)
+  const queries: GeocodeQuery[] = suggestions.map((text, index) => ({
+    text,
+    country,
+    usedFields: [],
+    strategy: previous.attempts.length + index,
+    templateId: `ia-${String(index)}`,
+  }))
+
+  const retried = await geocodeRecord(record, { ...options, queries })
+  if (retried.result === null) {
+    // Se conservan los intentos de ambas rondas para poder explicarlo.
+    return { ...retried, attempts: [...previous.attempts, ...retried.attempts] }
+  }
+  return {
+    ...retried,
+    attempts: [...previous.attempts, ...retried.attempts],
+    result: {
+      ...retried.result,
+      notes: [...retried.result.notes, 'Consulta propuesta por el asistente de IA.'],
+    },
+  }
+}
+
 /** Guarda los ajustes de sesion en un solo sitio. */
 function persistSettings(state: AppState): void {
   void getRepository().saveSettings({
     country: state.country,
     requireCountry: state.requireCountry,
     useFallbackProvider: state.useFallbackProvider,
+    ai: state.ai,
     updatedAt: nowIso(),
   })
 }
@@ -143,6 +191,47 @@ export const useAppStore = create<AppState>()((set, get) => ({
   setUseFallbackProvider: (useFallbackProvider) => {
     set({ useFallbackProvider })
     persistSettings(get())
+  },
+
+  // ---------------------------------------------------------------------- ia
+  ai: DEFAULT_AI_SETTINGS,
+  aiBusy: false,
+
+  setAiSettings: (settings) => {
+    set({ ai: { ...get().ai, ...settings } })
+    persistSettings(get())
+  },
+
+  assistColumnMapping: async () => {
+    const { preview, mapping, ai } = get()
+    if (!preview || !ai.enabled) return 0
+
+    // Solo se pregunta por lo que las reglas no supieron resolver.
+    const unknown = preview.headers
+      .map((header, index) => ({ header, index }))
+      .filter((entry) => mapping[entry.index] == null && entry.header.trim() !== '')
+
+    if (unknown.length === 0) return 0
+
+    set({ aiBusy: true })
+    try {
+      const suggestions = await getAssistant(ai).mapUnknownColumns(
+        unknown.map((entry) => entry.header),
+      )
+
+      let applied = 0
+      for (const suggestion of suggestions) {
+        const target = unknown.find((entry) => entry.header === suggestion.header)
+        if (!target) continue
+        // Nunca pisa un campo que el usuario ya asigno.
+        if (get().mapping.includes(suggestion.field)) continue
+        get().setColumnField(target.index, suggestion.field)
+        applied += 1
+      }
+      return applied
+    } finally {
+      set({ aiBusy: false })
+    }
   },
 
   // ------------------------------------------------------------------ import
@@ -294,6 +383,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
       country: settings?.country ?? null,
       requireCountry: settings?.requireCountry ?? true,
       useFallbackProvider: settings?.useFallbackProvider ?? false,
+      ai: settings?.ai ?? DEFAULT_AI_SETTINGS,
     })
   },
 
@@ -387,7 +477,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
         records: state.records.map((record) => (record.id === target.id ? searching : record)),
       }))
 
-      const outcome = await geocodeRecord(target, {
+      const baseOptions = {
         providers: getProviders(get().useFallbackProvider),
         scorer: getScorer(),
         thresholds: CONFIDENCE_THRESHOLDS,
@@ -396,7 +486,15 @@ export const useAppStore = create<AppState>()((set, get) => ({
         now: nowIso,
         sessionCountry: get().country,
         signal,
-      })
+      }
+
+      let outcome = await geocodeRecord(target, baseOptions)
+
+      // Ultimo recurso: si las estrategias deterministas no dieron nada y el
+      // asistente esta activo, se prueban las alternativas que proponga.
+      if (outcome.status === 'NOT_FOUND' && get().ai.enabled) {
+        outcome = await retryWithAssistant(target, outcome, baseOptions, get().ai, signal)
+      }
 
       // El registro pudo editarse mientras se buscaba: se relee antes de escribir.
       const current = get().records.find((record) => record.id === target.id)

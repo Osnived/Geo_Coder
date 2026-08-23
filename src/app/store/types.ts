@@ -4,6 +4,8 @@ import type { EstablishmentRecord, RecordSource } from '@/domain/models/record'
 import type { RecordStatus } from '@/domain/models/status'
 import type { LoadedWorkbook, SheetPreview, SheetSummary } from '@/infrastructure/excel'
 
+import type { AiSettings } from './assistant'
+
 export interface SettingsSlice {
   /** Pais global aplicado a los registros que no traen uno propio. */
   country: Country | null
@@ -88,4 +90,21 @@ export interface ReviewSlice {
   pickCoordinates: (id: string, latitude: number, longitude: number) => Promise<void>
 }
 
-export type AppState = SettingsSlice & ImportSlice & RecordsSlice & GeocodingSlice & ReviewSlice
+export interface AiSlice {
+  ai: AiSettings
+  setAiSettings: (settings: Partial<AiSettings>) => void
+  /**
+   * Pide al asistente que interprete las columnas que las reglas no
+   * reconocieron. Devuelve cuantas resolvio.
+   */
+  assistColumnMapping: () => Promise<number>
+  /** Estado de la ultima peticion al asistente. */
+  aiBusy: boolean
+}
+
+export type AppState = SettingsSlice &
+  ImportSlice &
+  RecordsSlice &
+  GeocodingSlice &
+  ReviewSlice &
+  AiSlice

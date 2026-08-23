@@ -7,6 +7,7 @@ import { ImportPanel } from '@/features/import/ImportPanel'
 import { ManualEntryForm } from '@/features/manual-entry/ManualEntryForm'
 import { RecordsTable } from '@/features/results/RecordsTable'
 import { SearchPanel } from '@/features/search/SearchPanel'
+import { AiSettingsPanel } from '@/features/settings/AiSettingsPanel'
 import { CountrySelector } from '@/features/settings/CountrySelector'
 import { cx } from '@/shared/cx'
 
@@ -15,7 +16,7 @@ const ReviewPanel = lazy(() =>
   import('@/features/review/ReviewPanel').then((module) => ({ default: module.ReviewPanel })),
 )
 
-type Tab = 'import' | 'manual' | 'records' | 'search' | 'review' | 'export'
+type Tab = 'import' | 'manual' | 'records' | 'search' | 'review' | 'export' | 'settings'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'import', label: 'Importar Excel' },
@@ -24,6 +25,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'search', label: 'Busqueda' },
   { id: 'review', label: 'Revision' },
   { id: 'export', label: 'Exportar' },
+  { id: 'settings', label: 'Ajustes' },
 ]
 
 export function App() {
@@ -95,6 +97,7 @@ export function App() {
               </Suspense>
             ) : null}
             {tab === 'export' ? <ExportPanel /> : null}
+            {tab === 'settings' ? <AiSettingsPanel /> : null}
           </>
         )}
       </main>

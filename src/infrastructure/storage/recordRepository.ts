@@ -19,6 +19,7 @@ export interface RecordRepository {
     country: Country | null
     requireCountry: boolean
     useFallbackProvider: boolean
+    ai: { enabled: boolean; endpoint: string; model: string }
     updatedAt: string
   }): Promise<void>
 }

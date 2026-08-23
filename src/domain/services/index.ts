@@ -1,3 +1,4 @@
+export * from './aiAssistant'
 export * from './exportBuilder'
 export * from './geocoderProvider'
 export * from './geocoderService'

@@ -15,6 +15,7 @@ export interface SessionSettings {
   readonly country: Country | null
   readonly requireCountry: boolean
   readonly useFallbackProvider?: boolean
+  readonly ai?: { enabled: boolean; endpoint: string; model: string }
   readonly updatedAt: string
 }
 

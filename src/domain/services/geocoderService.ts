@@ -103,6 +103,11 @@ export interface GeocodeOptions {
   readonly now: () => string
   readonly sessionCountry?: Country | null
   readonly maxQueries?: number
+  /**
+   * Consultas a usar en lugar de las que genera el QueryBuilder. Sirve para
+   * reintentar con alternativas propuestas por la capa de IA (spec seccion 22).
+   */
+  readonly queries?: readonly GeocodeQuery[]
   readonly signal?: AbortSignal
   /** Candidatos que se guardan para la pantalla de revision. */
   readonly maxCandidates?: number
@@ -179,10 +184,12 @@ export async function geocodeRecord(
   record: EstablishmentRecord,
   options: GeocodeOptions,
 ): Promise<GeocodeOutcome> {
-  const queries = buildQueries(record, {
-    sessionCountry: options.sessionCountry ?? null,
-    ...(options.maxQueries === undefined ? {} : { maxQueries: options.maxQueries }),
-  })
+  const queries =
+    options.queries ??
+    buildQueries(record, {
+      sessionCountry: options.sessionCountry ?? null,
+      ...(options.maxQueries === undefined ? {} : { maxQueries: options.maxQueries }),
+    })
 
   if (queries.length === 0) {
     return { status: 'NOT_FOUND', result: null, attempts: [] }

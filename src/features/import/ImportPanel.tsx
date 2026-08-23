@@ -34,9 +34,13 @@ export function ImportPanel() {
     resetMappingToSuggestion,
     clearImport,
     confirmImport,
+    ai,
+    aiBusy,
+    assistColumnMapping,
   } = useAppStore()
 
   const [lastImported, setLastImported] = useState<number | null>(null)
+  const [aiApplied, setAiApplied] = useState<number | null>(null)
 
   const mappedCount = mapping.filter((field) => field !== null).length
 
@@ -153,9 +157,22 @@ export function ImportPanel() {
             title="4. Mapeo de columnas"
             description="La deteccion automatica es una sugerencia: revisa y corrige lo que haga falta."
             actions={
-              <Button variant="ghost" onClick={resetMappingToSuggestion}>
-                Restaurar sugerencia
-              </Button>
+              <>
+                {ai.enabled ? (
+                  <Button
+                    disabled={aiBusy}
+                    onClick={() => {
+                      void assistColumnMapping().then(setAiApplied)
+                    }}
+                    title="Pregunta al asistente solo por las columnas sin reconocer"
+                  >
+                    {aiBusy ? 'Consultando...' : 'Ayuda de IA'}
+                  </Button>
+                ) : null}
+                <Button variant="ghost" onClick={resetMappingToSuggestion}>
+                  Restaurar sugerencia
+                </Button>
+              </>
             }
           >
             <ColumnMapper
@@ -164,6 +181,16 @@ export function ImportPanel() {
               displacedColumns={displacedColumns}
               onChange={setColumnField}
             />
+
+            {aiApplied !== null ? (
+              <div className="mt-3">
+                <Callout tone={aiApplied > 0 ? 'accent' : 'warn'}>
+                  {aiApplied > 0
+                    ? `El asistente resolvio ${String(aiApplied)} columna(s). Revisalas: siguen siendo sugerencias.`
+                    : 'El asistente no pudo resolver ninguna columna.'}
+                </Callout>
+              </div>
+            ) : null}
 
             {mappedCount === 0 ? (
               <div className="mt-3">
