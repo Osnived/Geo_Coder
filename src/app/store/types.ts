@@ -74,4 +74,15 @@ export interface GeocodingSlice {
   cancelGeocoding: () => void
 }
 
-export type AppState = SettingsSlice & ImportSlice & RecordsSlice & GeocodingSlice
+export interface ReviewSlice {
+  /** Da por bueno el resultado actual. */
+  acceptResult: (id: string) => Promise<void>
+  /** Descarta el resultado actual conservandolo como rechazado. */
+  rejectResult: (id: string) => Promise<void>
+  /** Sustituye el resultado por uno de los candidatos del proveedor. */
+  chooseCandidate: (id: string, candidateIndex: number) => Promise<void>
+  /** Fija unas coordenadas marcadas a mano sobre el mapa. */
+  pickCoordinates: (id: string, latitude: number, longitude: number) => Promise<void>
+}
+
+export type AppState = SettingsSlice & ImportSlice & RecordsSlice & GeocodingSlice & ReviewSlice

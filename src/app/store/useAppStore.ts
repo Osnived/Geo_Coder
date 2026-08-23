@@ -14,6 +14,12 @@ import { isExcelReadError, readWorkbookFile, type SheetPreview } from '@/infrast
 import { newId, nowIso } from '@/shared/id'
 
 import { geocodeRecord, type CandidateScorer } from '@/domain/services/geocoderService'
+import {
+  acceptResult as accept,
+  rejectResult as reject,
+  selectCandidate,
+  setManualCoordinates,
+} from '@/domain/services/reviewService'
 import { createScorer } from '@/domain/services/scoringService'
 import { CONFIDENCE_THRESHOLDS, SCORING_WEIGHTS } from '@/shared/config/geocoding'
 
@@ -52,6 +58,23 @@ export function setScorer(next: CandidateScorer): void {
  * de la pantalla de busqueda.
  */
 const AUTO_TARGET_STATUSES: readonly RecordStatus[] = ['PENDING', 'ERROR']
+
+/** Aplica una transicion de revision a un registro y la persiste. */
+async function applyReview(
+  get: () => AppState,
+  set: (partial: Partial<AppState>) => void,
+  id: string,
+  transition: (record: EstablishmentRecord) => EstablishmentRecord,
+): Promise<void> {
+  const current = get().records.find((record) => record.id === id)
+  if (!current) return
+
+  const updated = transition(current)
+  if (updated === current) return
+
+  await getRepository().save(updated)
+  set({ records: get().records.map((record) => (record.id === id ? updated : record)) })
+}
 
 /** Registros a procesar: los indicados, o los pendientes y los que fallaron. */
 function selectTargets(
@@ -388,6 +411,23 @@ export const useAppStore = create<AppState>()((set, get) => ({
       geocoding: { ...state.geocoding, isRunning: false, currentRecordId: null },
     }))
   },
+
+  // ------------------------------------------------------------------ review
+  acceptResult: (id) => applyReview(get, set, id, (record) => accept(record, { now: nowIso })),
+
+  rejectResult: (id) => applyReview(get, set, id, (record) => reject(record, { now: nowIso })),
+
+  chooseCandidate: (id, candidateIndex) =>
+    applyReview(get, set, id, (record) => {
+      const candidate = record.result?.candidates[candidateIndex]
+      if (!candidate) return record
+      return selectCandidate(record, candidate, { now: nowIso })
+    }),
+
+  pickCoordinates: (id, latitude, longitude) =>
+    applyReview(get, set, id, (record) =>
+      setManualCoordinates(record, latitude, longitude, { now: nowIso }),
+    ),
 
   cancelGeocoding: () => {
     abortController?.abort()

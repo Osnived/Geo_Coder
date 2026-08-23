@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 
 import { persistenceAvailable, useAppStore } from '@/app/store'
 import { Callout } from '@/components/ui/primitives'
@@ -9,13 +9,19 @@ import { SearchPanel } from '@/features/search/SearchPanel'
 import { CountrySelector } from '@/features/settings/CountrySelector'
 import { cx } from '@/shared/cx'
 
-type Tab = 'import' | 'manual' | 'records' | 'search'
+// Leaflet pesa lo suyo: solo se descarga al abrir la revision.
+const ReviewPanel = lazy(() =>
+  import('@/features/review/ReviewPanel').then((module) => ({ default: module.ReviewPanel })),
+)
+
+type Tab = 'import' | 'manual' | 'records' | 'search' | 'review'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'import', label: 'Importar Excel' },
   { id: 'manual', label: 'Entrada manual' },
   { id: 'records', label: 'Registros' },
   { id: 'search', label: 'Busqueda' },
+  { id: 'review', label: 'Revision' },
 ]
 
 export function App() {
@@ -77,6 +83,15 @@ export function App() {
             {tab === 'manual' ? <ManualEntryForm /> : null}
             {tab === 'records' ? <RecordsTable /> : null}
             {tab === 'search' ? <SearchPanel /> : null}
+            {tab === 'review' ? (
+              <Suspense
+                fallback={
+                  <p className="text-ink-muted py-10 text-center text-sm">Cargando mapa...</p>
+                }
+              >
+                <ReviewPanel />
+              </Suspense>
+            ) : null}
           </>
         )}
       </main>

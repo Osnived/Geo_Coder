@@ -27,6 +27,11 @@ export interface EstablishmentRecord {
   readonly original: Readonly<Record<string, unknown>>
   readonly status: RecordStatus
   readonly result: GeocodeResult | null
+  /**
+   * Resultados que una persona rechazo explicitamente. Se conservan para no
+   * volver a proponerlos y para poder explicar la decision.
+   */
+  readonly rejected?: readonly GeocodeResult[]
   readonly createdAt: string
   readonly updatedAt: string
 }
