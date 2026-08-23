@@ -1,6 +1,6 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 
-import { useAppStore } from '@/app/store'
+import { getCache, getCacheStats, useAppStore } from '@/app/store'
 import { Badge, Button, Callout, Panel } from '@/components/ui/primitives'
 import { STATUS_LABELS } from '@/domain/models/status'
 import { buildQueries } from '@/domain/services/queryBuilder'
@@ -37,6 +37,8 @@ export function SearchPanel() {
     [records, country],
   )
 
+  const [cacheCleared, setCacheCleared] = useState(false)
+  const cacheStats = getCacheStats()
   const searchable = plan.filter((entry) => entry.queries.length > 0).length
   const pending = records.filter(
     (record) => record.status === 'PENDING' || record.status === 'ERROR',
@@ -103,6 +105,26 @@ export function SearchPanel() {
         {geocoding.lastError ? (
           <Callout tone="danger">Ultimo error del proveedor: {geocoding.lastError}</Callout>
         ) : null}
+
+        <div className="text-ink-faint flex flex-wrap items-center gap-2 text-xs">
+          <span>
+            Cache: {cacheStats.hits} acierto(s), {cacheStats.misses} consulta(s) reales
+          </span>
+          <button
+            type="button"
+            className="underline underline-offset-2"
+            onClick={() => {
+              void getCache()
+                .clear()
+                .then(() => {
+                  setCacheCleared(true)
+                })
+            }}
+          >
+            Vaciar cache
+          </button>
+          {cacheCleared ? <span>Cache vaciada.</span> : null}
+        </div>
 
         {geocoding.isRunning || geocoding.processed > 0 ? (
           <div className="border-border-subtle bg-surface-muted rounded-md border px-3 py-2">

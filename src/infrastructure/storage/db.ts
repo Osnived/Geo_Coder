@@ -17,9 +17,20 @@ export interface SessionSettings {
   readonly updatedAt: string
 }
 
+/** Entrada de la cache de geocodificacion (spec seccion 12). */
+export interface CacheEntry {
+  /** proveedor + consulta normalizada + pais + limite. */
+  readonly key: string
+  readonly provider: string
+  /** Candidatos crudos del proveedor, serializados tal cual. */
+  readonly candidates: unknown
+  readonly cachedAt: string
+}
+
 export interface GeolocatorDb extends Dexie {
   records: Table<EstablishmentRecord, string>
   settings: Table<SessionSettings, string>
+  cache: Table<CacheEntry, string>
 }
 
 export const DB_NAME = 'geolocator'
@@ -37,6 +48,12 @@ export function createDb(name: string = DB_NAME, deps?: IndexedDbDeps): Geolocat
     // Solo se indexa lo que se filtra en la UI; el resto del registro va suelto.
     records: 'id, status, source, createdAt',
     settings: 'id',
+  })
+
+  db.version(2).stores({
+    records: 'id, status, source, createdAt',
+    settings: 'id',
+    cache: 'key, provider, cachedAt',
   })
 
   return db
