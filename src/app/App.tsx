@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState } from 'react'
 
 import { persistenceAvailable, useAppStore } from '@/app/store'
 import { Callout } from '@/components/ui/primitives'
+import { ExportPanel } from '@/features/export/ExportPanel'
 import { ImportPanel } from '@/features/import/ImportPanel'
 import { ManualEntryForm } from '@/features/manual-entry/ManualEntryForm'
 import { RecordsTable } from '@/features/results/RecordsTable'
@@ -14,7 +15,7 @@ const ReviewPanel = lazy(() =>
   import('@/features/review/ReviewPanel').then((module) => ({ default: module.ReviewPanel })),
 )
 
-type Tab = 'import' | 'manual' | 'records' | 'search' | 'review'
+type Tab = 'import' | 'manual' | 'records' | 'search' | 'review' | 'export'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'import', label: 'Importar Excel' },
@@ -22,6 +23,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'records', label: 'Registros' },
   { id: 'search', label: 'Busqueda' },
   { id: 'review', label: 'Revision' },
+  { id: 'export', label: 'Exportar' },
 ]
 
 export function App() {
@@ -92,6 +94,7 @@ export function App() {
                 <ReviewPanel />
               </Suspense>
             ) : null}
+            {tab === 'export' ? <ExportPanel /> : null}
           </>
         )}
       </main>
