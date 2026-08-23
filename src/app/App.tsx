@@ -44,7 +44,7 @@ export function App() {
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Geolocator</h1>
           <p className="text-ink-muted text-xs">
-            MVP 1 — importacion, mapeo, entrada manual y normalizacion.
+            Geolocalizacion de establecimientos, en tu maquina.
           </p>
         </div>
         <CountrySelector />
