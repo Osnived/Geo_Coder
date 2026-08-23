@@ -1,4 +1,5 @@
 import type { Country } from './country'
+import type { NormalizedField } from './fields'
 
 /** Un candidato devuelto por un proveedor, antes de decidir si es correcto. */
 export interface GeocodeCandidate {
@@ -30,12 +31,16 @@ export interface GeocodeResult {
   readonly resolvedAt: string
 }
 
-/** Consulta construida por el QueryBuilder. Se implementa en el MVP 2. */
+/** Consulta construida por el QueryBuilder (spec seccion 6). */
 export interface GeocodeQuery {
+  /** Texto libre que se envia al proveedor. */
   readonly text: string
+  /** Restriccion geografica. Se traduce al parametro propio de cada proveedor. */
   readonly country: Country | null
   /** Campos que se incluyeron, para poder explicar que se busco. */
-  readonly usedFields: readonly string[]
+  readonly usedFields: readonly NormalizedField[]
   /** Orden de intento: 0 es la estrategia principal. */
   readonly strategy: number
+  /** Identificador de la plantilla usada, para trazabilidad. */
+  readonly templateId: string
 }

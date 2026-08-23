@@ -5,15 +5,17 @@ import { Callout } from '@/components/ui/primitives'
 import { ImportPanel } from '@/features/import/ImportPanel'
 import { ManualEntryForm } from '@/features/manual-entry/ManualEntryForm'
 import { RecordsTable } from '@/features/results/RecordsTable'
+import { SearchPanel } from '@/features/search/SearchPanel'
 import { CountrySelector } from '@/features/settings/CountrySelector'
 import { cx } from '@/shared/cx'
 
-type Tab = 'import' | 'manual' | 'records'
+type Tab = 'import' | 'manual' | 'records' | 'search'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'import', label: 'Importar Excel' },
   { id: 'manual', label: 'Entrada manual' },
   { id: 'records', label: 'Registros' },
+  { id: 'search', label: 'Busqueda' },
 ]
 
 export function App() {
@@ -74,6 +76,7 @@ export function App() {
             {tab === 'import' ? <ImportPanel /> : null}
             {tab === 'manual' ? <ManualEntryForm /> : null}
             {tab === 'records' ? <RecordsTable /> : null}
+            {tab === 'search' ? <SearchPanel /> : null}
           </>
         )}
       </main>
