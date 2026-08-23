@@ -58,4 +58,20 @@ export interface RecordsSlice {
   clearRecords: () => Promise<void>
 }
 
-export type AppState = SettingsSlice & ImportSlice & RecordsSlice
+export interface GeocodingProgress {
+  readonly isRunning: boolean
+  readonly processed: number
+  readonly total: number
+  readonly currentRecordId: string | null
+  /** Ultimo error de proveedor, para avisar sin detener el proceso. */
+  readonly lastError: string | null
+}
+
+export interface GeocodingSlice {
+  geocoding: GeocodingProgress
+  /** Geocodifica los registros indicados, o todos los pendientes si se omite. */
+  runGeocoding: (ids?: readonly string[]) => Promise<void>
+  cancelGeocoding: () => void
+}
+
+export type AppState = SettingsSlice & ImportSlice & RecordsSlice & GeocodingSlice

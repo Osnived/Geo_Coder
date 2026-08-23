@@ -10,8 +10,22 @@ export interface GeocodeCandidate {
   readonly provider: string
   /** 0..1 — score calculado por la aplicacion, no por el proveedor. */
   readonly confidence: number
-  /** Payload crudo del proveedor, para trazabilidad (spec principio 7). */
+  /**
+   * Aporte de cada senal al score, para poder explicar por que se acepto o se
+   * rechazo un candidato (spec principio 7).
+   */
+  readonly signals: Readonly<Record<string, number>>
+  /** Payload crudo del proveedor, para trazabilidad. */
   readonly raw?: unknown
+}
+
+/** Registro de un intento de busqueda, se conserve o no su resultado. */
+export interface GeocodeAttempt {
+  readonly provider: string
+  readonly query: GeocodeQuery
+  readonly candidateCount: number
+  readonly bestConfidence: number
+  readonly error: { readonly code: string; readonly message: string } | null
 }
 
 /** Resultado aceptado para un registro. Separado conceptualmente de la entrada. */
@@ -26,6 +40,8 @@ export interface GeocodeResult {
   readonly manuallyVerified: boolean
   /** Alternativas que devolvio el proveedor, para la pantalla de revision. */
   readonly candidates: readonly GeocodeCandidate[]
+  /** Todo lo que se intento hasta llegar aqui (spec principio 7). */
+  readonly attempts: readonly GeocodeAttempt[]
   /** Resultado anterior si el usuario corrigio manualmente (spec seccion 15). */
   readonly replaced?: GeocodeResult
   readonly resolvedAt: string
