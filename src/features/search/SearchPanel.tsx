@@ -5,6 +5,8 @@ import { Badge, Button, Callout, Panel } from '@/components/ui/primitives'
 import { STATUS_LABELS } from '@/domain/models/status'
 import { buildQueries } from '@/domain/services/queryBuilder'
 
+import { ScoreBreakdown } from '@/features/results/ScoreBreakdown'
+
 import { QueryPreview } from './QueryPreview'
 
 const STATUS_TONE = {
@@ -157,15 +159,30 @@ export function SearchPanel() {
               <div className="mt-2 flex flex-col gap-2">
                 <QueryPreview queries={queries} />
 
+                {queries.length > 0 ? (
+                  <div>
+                    <Button
+                      disabled={geocoding.isRunning}
+                      onClick={() => void runGeocoding([record.id])}
+                    >
+                      Volver a buscar este registro
+                    </Button>
+                  </div>
+                ) : null}
+
                 {record.result ? (
-                  <div className="border-border-subtle text-ink-muted border-t pt-2 text-xs">
+                  <div className="border-border-subtle text-ink-muted flex flex-col gap-2 border-t pt-2 text-xs">
                     <p>
                       <strong className="text-ink">Encontrado:</strong>{' '}
                       {record.result.matchedName || '(sin nombre)'} — {record.result.matchedAddress}
                     </p>
-                    <p className="mt-0.5">
+                    <p>
                       Consulta que funciono: <code>{record.result.queryUsed}</code>
                     </p>
+                    <div>
+                      <p className="text-ink mb-1 font-medium">Por que este score</p>
+                      <ScoreBreakdown signals={record.result.candidates[0]?.signals ?? {}} />
+                    </div>
                   </div>
                 ) : null}
               </div>

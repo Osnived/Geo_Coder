@@ -1,2 +1,6 @@
+export * from './geocoderProvider'
+export * from './geocoderService'
 export * from './queryBuilder'
+export * from './rankScorer'
 export * from './recordNormalizer'
+export * from './scoringService'

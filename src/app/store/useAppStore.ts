@@ -14,8 +14,8 @@ import { isExcelReadError, readWorkbookFile, type SheetPreview } from '@/infrast
 import { newId, nowIso } from '@/shared/id'
 
 import { geocodeRecord, type CandidateScorer } from '@/domain/services/geocoderService'
-import { rankScorer } from '@/domain/services/rankScorer'
-import { CONFIDENCE_THRESHOLDS } from '@/shared/config/geocoding'
+import { createScorer } from '@/domain/services/scoringService'
+import { CONFIDENCE_THRESHOLDS, SCORING_WEIGHTS } from '@/shared/config/geocoding'
 
 import { getProviders } from './geocoder'
 import { getRepository } from './repository'
@@ -33,11 +33,8 @@ const PREVIEW_SAMPLE_SIZE = 25
 /** Controla la cancelacion del lote en curso. */
 let abortController: AbortController | null = null
 
-/**
- * Puntuador activo. En el MVP 3 es la linea base por posicion; el MVP 4 lo
- * sustituye por el scoring con senales.
- */
-let scorer: CandidateScorer = rankScorer
+/** Puntuador activo. Se puede sustituir en los tests. */
+let scorer: CandidateScorer = createScorer({ weights: SCORING_WEIGHTS })
 
 export function getScorer(): CandidateScorer {
   return scorer

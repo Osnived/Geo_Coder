@@ -5,6 +5,18 @@ import { Badge, Button, Callout, Panel, Select, TextInput } from '@/components/u
 import { FIELD_LABELS, type NormalizedField } from '@/domain/models/fields'
 import type { EstablishmentRecord } from '@/domain/models/record'
 import { RECORD_STATUSES, STATUS_LABELS } from '@/domain/models/status'
+
+/** Color de cada estado en la tabla. */
+const STATUS_TONE = {
+  FOUND: 'ok',
+  MANUALLY_VERIFIED: 'ok',
+  LOW_CONFIDENCE: 'warn',
+  NEEDS_REVIEW: 'warn',
+  NOT_FOUND: 'danger',
+  ERROR: 'danger',
+  SEARCHING: 'accent',
+  PENDING: 'neutral',
+} as const
 import {
   summarizeValidation,
   validateRecord,
@@ -72,6 +84,8 @@ function EditableRow({
           />
         </td>
       ))}
+      <td />
+      <td />
       <td />
       <td className="px-2 py-1.5">
         <div className="flex gap-1">
@@ -262,6 +276,8 @@ export function RecordsTable() {
                       {FIELD_LABELS[field]}
                     </th>
                   ))}
+                  <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Coordenadas</th>
+                  <th className="px-2 py-2 text-left font-medium">Estado</th>
                   <th className="px-2 py-2 text-left font-medium">Validacion</th>
                   <th className="px-2 py-2 text-left font-medium">Acciones</th>
                 </tr>
@@ -301,6 +317,24 @@ export function RecordsTable() {
                           {record.fields[field] || <span className="text-ink-faint">—</span>}
                         </td>
                       ))}
+                      <td className="px-2 py-1.5 text-xs whitespace-nowrap tabular-nums">
+                        {record.result ? (
+                          <span title={record.result.matchedAddress}>
+                            {record.result.latitude.toFixed(5)},{' '}
+                            {record.result.longitude.toFixed(5)}
+                          </span>
+                        ) : (
+                          <span className="text-ink-faint">—</span>
+                        )}
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <Badge tone={STATUS_TONE[record.status]}>
+                          {STATUS_LABELS[record.status]}
+                          {record.result
+                            ? ` ${String(Math.round(record.result.confidence * 100))}%`
+                            : ''}
+                        </Badge>
+                      </td>
                       <td className="px-2 py-1.5">
                         <ValidationCell record={record} options={validationOptions} />
                       </td>
