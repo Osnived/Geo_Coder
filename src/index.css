@@ -1,0 +1,20 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-surface: oklch(99% 0 0);
+  --color-surface-muted: oklch(96.5% 0.003 250);
+  --color-border-subtle: oklch(91% 0.005 250);
+  --color-ink: oklch(24% 0.01 250);
+  --color-ink-muted: oklch(52% 0.012 250);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background-color: var(--color-surface-muted);
+  color: var(--color-ink);
+}
