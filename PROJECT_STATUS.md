@@ -55,6 +55,7 @@ No solo tests unitarios. Contra el servidor de desarrollo y los servicios reales
 | Photon como respaldo | Resolvió un registro que Nominatim no; proveedor `photon` en el resultado |
 | Tope por ambigüedad | `Toks, Ciudad de Mexico` limitado al 75% con el motivo explicado |
 | IA sin modelo escuchando | Mensaje claro y la aplicación sigue funcionando |
+| Exportación a Excel | Archivo descargado y vuelto a leer: 28 columnas, 3 filas, las 9 originales intactas (con `CIUDAD (2)` desambiguada) y los tres proveedores representados (`manual`, `nominatim`, `photon`) |
 
 ## Casos de la especificación §29
 
