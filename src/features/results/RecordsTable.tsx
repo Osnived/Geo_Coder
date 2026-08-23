@@ -24,6 +24,8 @@ import {
   type ValidationOptions,
 } from '@/domain/rules/validation'
 
+import { ScrollableTable } from '@/components/ui/ScrollableTable'
+
 import { BatchList } from './BatchList'
 import { filterRecords } from './filterRecords'
 
@@ -281,10 +283,10 @@ export function RecordsTable() {
             Todavia no hay registros. Importa un Excel o crea uno manualmente.
           </div>
         ) : (
-          <div className="border-border-subtle overflow-x-auto rounded-md border">
+          <ScrollableTable>
             <table className="w-full border-collapse text-sm">
               <thead>
-                <tr className="bg-surface-sunken text-ink-muted text-xs">
+                <tr className="text-ink-muted text-xs [&>th]:bg-surface-sunken [&>th]:sticky [&>th]:top-0 [&>th]:z-10">
                   <th className="w-9 px-2 py-2">
                     <input
                       type="checkbox"
@@ -410,7 +412,7 @@ export function RecordsTable() {
                 )}
               </tbody>
             </table>
-          </div>
+          </ScrollableTable>
         )}
 
         {records.length > 0 && visible.length === 0 ? (

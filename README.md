@@ -55,6 +55,8 @@ Crea registros a mano. Producen exactamente el mismo modelo que los importados y
 
 Tabla unificada con filtros por texto, **lote**, origen y estado. Edición en línea, duplicado y borrado. Cada registro muestra sus problemas de validación sin que nada se descarte.
 
+La tabla es ancha, así que tiene su propio desplazamiento: **la barra horizontal está arriba** (además de abajo, y las dos van sincronizadas) y el desplazamiento vertical es **interno**, con la cabecera fija. La página no se mueve mientras recorres las filas.
+
 Arriba aparece la lista de **lotes**: cada importación de una hoja es un lote propio, con el nombre del archivo, la hoja y la fecha y hora exactas. Los registros manuales se agrupan en un lote por día. Pinchando un lote se filtra la tabla; también se puede borrar un lote entero con todos sus registros.
 
 Cada registro guarda además su propia fecha de creación y de última modificación, visibles en la tabla y presentes en la exportación.

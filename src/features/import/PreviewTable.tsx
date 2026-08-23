@@ -1,3 +1,4 @@
+import { ScrollableTable } from '@/components/ui/ScrollableTable'
 import { cellToString } from '@/domain/rules/text'
 import type { SheetPreview } from '@/infrastructure/excel'
 import { cx } from '@/shared/cx'
@@ -7,10 +8,10 @@ export function PreviewTable({ preview }: { preview: SheetPreview }) {
   const empty = new Set(preview.emptyColumnIndexes)
 
   return (
-    <div className="border-border-subtle overflow-x-auto rounded-md border">
+    <ScrollableTable maxHeightClass="max-h-96">
       <table className="w-full border-collapse text-xs">
         <thead>
-          <tr className="bg-surface-sunken">
+          <tr className="[&>th]:bg-surface-sunken [&>th]:sticky [&>th]:top-0 [&>th]:z-10">
             <th className="text-ink-faint w-12 px-2 py-1.5 text-right font-medium">#</th>
             {preview.headers.map((header, index) => (
               <th
@@ -44,6 +45,6 @@ export function PreviewTable({ preview }: { preview: SheetPreview }) {
           ))}
         </tbody>
       </table>
-    </div>
+    </ScrollableTable>
   )
 }

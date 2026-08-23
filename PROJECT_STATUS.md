@@ -25,6 +25,7 @@ Añadido después del plan original:
 | Extra | Contenido | Estado |
 | --- | --- | --- |
 | Lotes | Agrupación por archivo/hoja o inserción manual, con fecha y hora | ✅ |
+| Tablas anchas | Scroll horizontal arriba sincronizado y scroll vertical interno con cabecera fija | ✅ |
 | Mapa global | Todos los registros localizados en un mapa, con selección bidireccional y vuelo con zoom al tocar una tarjeta | ✅ |
 
 ## Verificación
@@ -64,6 +65,7 @@ No solo tests unitarios. Contra el servidor de desarrollo y los servicios reales
 | IA sin modelo escuchando | Mensaje claro y la aplicación sigue funcionando |
 | Lotes | Cada importación crea su lote con archivo, hoja y hora; los registros previos caen en «Registros anteriores» sin romper nada; el filtro por lote muestra 3 de 6 |
 | Mapa global | 3 marcadores con tiles cargando; elegir en la lista agranda el punto y elegir el punto resalta la fila |
+| Scroll de tablas | Barra superior aparece solo al desbordar y reacciona al redimensionar; sincronización en ambos sentidos (500↔500, 120↔120); el scroll vertical no mueve la página y la cabecera queda pegada arriba |
 | Vuelo al tocar una tarjeta | De zoom 5 a zoom 17 centrado en las coordenadas exactas del registro, en los dos registros probados; «Ver todos» vuelve a zoom 5; pinchar un marcador resalta la fila sin mover el mapa |
 | Exportación a Excel | Archivo descargado y vuelto a leer: 28 columnas, 3 filas, las 9 originales intactas (con `CIUDAD (2)` desambiguada) y los tres proveedores representados (`manual`, `nominatim`, `photon`) |
 
