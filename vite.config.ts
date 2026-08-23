@@ -17,5 +17,8 @@ export default defineConfig({
     globals: false,
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    // Varios tests generan archivos .xlsx reales con ExcelJS, que es pesado;
+    // con la maquina cargada los 5 s por defecto se quedan cortos.
+    testTimeout: 20_000,
   },
 })

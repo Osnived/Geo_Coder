@@ -46,3 +46,27 @@ export const CONFIDENCE_THRESHOLDS = {
   accept: 0.8,
   review: 0.5,
 } as const
+
+/**
+ * Topes de confianza que fuerzan revision humana (spec principio 1 y seccion 20).
+ *
+ * Nacen de un caso real: buscar "Toks, Ciudad de Mexico" devuelve un Toks
+ * cualquiera de la cadena con todas las senales al 100%, porque no hay nada en
+ * el registro que distinga una sucursal de otra. Aceptarlo automaticamente
+ * seria asignar coordenadas equivocadas con total seguridad aparente.
+ *
+ * Ambos topes estan por debajo de `accept`, asi que el registro cae en
+ * LOW_CONFIDENCE y entra en la cola de revision en lugar de darse por bueno.
+ */
+export const CONFIDENCE_CAPS = {
+  /**
+   * La consulta no incluyo direccion ni codigo postal: no hay forma de saber
+   * que sucursal de la cadena es.
+   */
+  lowSpecificity: 0.75,
+  /** Dos candidatos casi empatados: el geocoder no sabe cual elegir. */
+  ambiguous: 0.6,
+} as const
+
+/** Diferencia por debajo de la cual dos candidatos se consideran empatados. */
+export const AMBIGUITY_DELTA = 0.05

@@ -7,6 +7,9 @@ import type { GeocoderProvider, ProviderCandidate } from './geocoderProvider'
 import { geocodeRecord, type CandidateScorer } from './geocoderService'
 
 const THRESHOLDS = { accept: 0.8, review: 0.5 }
+/** Topes neutros: cada test que quiera probarlos los pasa explicitamente. */
+const NO_CAPS = { lowSpecificity: 1, ambiguous: 1 }
+const NO_AMBIGUITY = 0
 const NOW = () => '2026-01-01T00:00:00.000Z'
 
 function candidate(overrides: Partial<ProviderCandidate> = {}): ProviderCandidate {
@@ -63,6 +66,8 @@ describe('geocodeRecord', () => {
       providers: [provider],
       scorer: fixedScorer(0.9),
       thresholds: THRESHOLDS,
+      caps: NO_CAPS,
+      ambiguityDelta: NO_AMBIGUITY,
       now: NOW,
     })
 
@@ -79,6 +84,8 @@ describe('geocodeRecord', () => {
       providers: [fakeProvider('fake', () => [candidate()])],
       scorer: fixedScorer(0.9),
       thresholds: THRESHOLDS,
+      caps: NO_CAPS,
+      ambiguityDelta: NO_AMBIGUITY,
       now: NOW,
     })
 
@@ -91,6 +98,8 @@ describe('geocodeRecord', () => {
       providers: [fakeProvider('fake', () => [candidate()])],
       scorer: fixedScorer(0.6),
       thresholds: THRESHOLDS,
+      caps: NO_CAPS,
+      ambiguityDelta: NO_AMBIGUITY,
       now: NOW,
     })
 
@@ -103,6 +112,8 @@ describe('geocodeRecord', () => {
       providers: [fakeProvider('fake', () => [candidate()])],
       scorer: fixedScorer(0.2),
       thresholds: THRESHOLDS,
+      caps: NO_CAPS,
+      ambiguityDelta: NO_AMBIGUITY,
       now: NOW,
     })
 
@@ -115,6 +126,8 @@ describe('geocodeRecord', () => {
       providers: [fakeProvider('fake', () => [])],
       scorer: fixedScorer(0.9),
       thresholds: THRESHOLDS,
+      caps: NO_CAPS,
+      ambiguityDelta: NO_AMBIGUITY,
       now: NOW,
     })
 
@@ -129,6 +142,8 @@ describe('geocodeRecord', () => {
       providers: [{ name: 'fake', requestsPerSecond: 10, search }],
       scorer: fixedScorer(0.9),
       thresholds: THRESHOLDS,
+      caps: NO_CAPS,
+      ambiguityDelta: NO_AMBIGUITY,
       now: NOW,
     })
 
@@ -149,6 +164,8 @@ describe('geocodeRecord', () => {
       providers: [provider],
       scorer: fixedScorer(0.9),
       thresholds: THRESHOLDS,
+      caps: NO_CAPS,
+      ambiguityDelta: NO_AMBIGUITY,
       now: NOW,
     })
 
@@ -164,6 +181,8 @@ describe('geocodeRecord', () => {
       providers: [primary, secondary],
       scorer: fixedScorer(0.9),
       thresholds: THRESHOLDS,
+      caps: NO_CAPS,
+      ambiguityDelta: NO_AMBIGUITY,
       now: NOW,
     })
 
@@ -183,6 +202,8 @@ describe('geocodeRecord', () => {
       providers: [provider],
       scorer: fixedScorer(0.9),
       thresholds: THRESHOLDS,
+      caps: NO_CAPS,
+      ambiguityDelta: NO_AMBIGUITY,
       now: NOW,
     })
 
@@ -200,6 +221,8 @@ describe('geocodeRecord', () => {
       providers: [provider],
       scorer: fixedScorer(0.9),
       thresholds: THRESHOLDS,
+      caps: NO_CAPS,
+      ambiguityDelta: NO_AMBIGUITY,
       now: NOW,
     })
 
@@ -222,6 +245,8 @@ describe('geocodeRecord', () => {
       providers: [provider],
       scorer,
       thresholds: THRESHOLDS,
+      caps: NO_CAPS,
+      ambiguityDelta: NO_AMBIGUITY,
       now: NOW,
     })
 
@@ -238,6 +263,8 @@ describe('geocodeRecord', () => {
       providers: [{ name: 'fake', requestsPerSecond: 10, search }],
       scorer: fixedScorer(0.9),
       thresholds: THRESHOLDS,
+      caps: NO_CAPS,
+      ambiguityDelta: NO_AMBIGUITY,
       now: NOW,
       signal: controller.signal,
     })
@@ -251,6 +278,8 @@ describe('geocodeRecord', () => {
       providers: [fakeProvider('fake', () => [candidate()])],
       scorer: fixedScorer(0.4),
       thresholds: THRESHOLDS,
+      caps: NO_CAPS,
+      ambiguityDelta: NO_AMBIGUITY,
       now: NOW,
       maxQueries: 2,
     })
@@ -263,5 +292,81 @@ describe('geocodeRecord', () => {
       error: null,
     })
     expect(outcome.attempts[0]?.query.strategy).toBe(0)
+  })
+})
+
+describe('topes de confianza', () => {
+  const CAPS = { lowSpecificity: 0.75, ambiguous: 0.6 }
+
+  it('limita la confianza si la consulta no llevaba direccion ni codigo postal', async () => {
+    // Registro sin direccion: la consulta solo usa nombre y ciudad.
+    const sinDireccion = makeRecord({
+      client: 'Toks',
+      location_name: 'Toks Plaza Universidad',
+      city: 'Ciudad de Mexico',
+    })
+
+    const outcome = await geocodeRecord(sinDireccion, {
+      providers: [fakeProvider('fake', () => [candidate()])],
+      scorer: fixedScorer(1),
+      thresholds: THRESHOLDS,
+      caps: CAPS,
+      ambiguityDelta: 0.05,
+      now: NOW,
+    })
+
+    expect(outcome.status).toBe('LOW_CONFIDENCE')
+    expect(outcome.result?.confidence).toBe(0.75)
+    expect(outcome.result?.notes[0]).toContain('direccion ni codigo postal')
+  })
+
+  it('no limita nada si la consulta llevaba direccion', async () => {
+    const outcome = await geocodeRecord(RECORD, {
+      providers: [fakeProvider('fake', () => [candidate()])],
+      scorer: fixedScorer(0.95),
+      thresholds: THRESHOLDS,
+      caps: CAPS,
+      ambiguityDelta: 0.05,
+      now: NOW,
+    })
+
+    expect(outcome.status).toBe('FOUND')
+    expect(outcome.result?.confidence).toBe(0.95)
+    expect(outcome.result?.notes).toEqual([])
+  })
+
+  it('limita la confianza si dos candidatos quedan empatados', async () => {
+    const outcome = await geocodeRecord(RECORD, {
+      providers: [fakeProvider('fake', () => [candidate({ name: 'A' }), candidate({ name: 'B' })])],
+      scorer: fixedScorer(0.95),
+      thresholds: THRESHOLDS,
+      caps: CAPS,
+      ambiguityDelta: 0.05,
+      now: NOW,
+    })
+
+    expect(outcome.status).toBe('LOW_CONFIDENCE')
+    expect(outcome.result?.confidence).toBe(0.6)
+    expect(outcome.result?.notes[0]).toContain('casi igual de buenos')
+  })
+
+  it('no considera ambiguo un candidato claramente mejor que el resto', async () => {
+    const scorer: CandidateScorer = (_record, item) => ({
+      confidence: item.name === 'bueno' ? 0.95 : 0.3,
+      signals: {},
+    })
+
+    const outcome = await geocodeRecord(RECORD, {
+      providers: [
+        fakeProvider('fake', () => [candidate({ name: 'bueno' }), candidate({ name: 'malo' })]),
+      ],
+      scorer,
+      thresholds: THRESHOLDS,
+      caps: CAPS,
+      ambiguityDelta: 0.05,
+      now: NOW,
+    })
+
+    expect(outcome.status).toBe('FOUND')
   })
 })

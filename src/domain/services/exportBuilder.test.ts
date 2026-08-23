@@ -19,6 +19,7 @@ function result(overrides: Partial<GeocodeResult> = {}): GeocodeResult {
     manuallyVerified: false,
     candidates: [],
     attempts: [],
+    notes: [],
     resolvedAt: '2026-03-01T00:00:00.000Z',
     ...overrides,
   }

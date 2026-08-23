@@ -42,6 +42,11 @@ export interface GeocodeResult {
   readonly candidates: readonly GeocodeCandidate[]
   /** Todo lo que se intento hasta llegar aqui (spec principio 7). */
   readonly attempts: readonly GeocodeAttempt[]
+  /**
+   * Motivos por los que la confianza se limito, si se limito. Explican por que
+   * un resultado aparentemente perfecto pide revision.
+   */
+  readonly notes: readonly string[]
   /** Resultado anterior si el usuario corrigio manualmente (spec seccion 15). */
   readonly replaced?: GeocodeResult
   readonly resolvedAt: string

@@ -38,6 +38,55 @@ export interface ConfidenceThresholds {
   readonly review: number
 }
 
+/** Topes que fuerzan revision aunque el score salga alto. */
+export interface ConfidenceCaps {
+  readonly lowSpecificity: number
+  readonly ambiguous: number
+}
+
+/**
+ * Limita la confianza cuando el score no es de fiar pese a ser alto.
+ *
+ * Dos situaciones lo justifican:
+ * - La consulta no llevaba direccion ni codigo postal, asi que cualquier
+ *   sucursal de la cadena en esa ciudad puntua igual de bien.
+ * - Dos candidatos quedaron practicamente empatados: el proveedor no sabe
+ *   cual es y la aplicacion tampoco.
+ */
+export function capConfidence(
+  scored: readonly GeocodeCandidate[],
+  query: GeocodeQuery,
+  caps: ConfidenceCaps,
+  ambiguityDelta: number,
+): { confidence: number; notes: string[] } {
+  const top = scored[0]
+  if (!top) return { confidence: 0, notes: [] }
+
+  let confidence = top.confidence
+  const notes: string[] = []
+
+  const isSpecific =
+    query.usedFields.includes('address') || query.usedFields.includes('postal_code')
+  if (!isSpecific && confidence > caps.lowSpecificity) {
+    confidence = caps.lowSpecificity
+    notes.push(
+      'La busqueda no incluyo direccion ni codigo postal: no se puede distinguir una sucursal de otra.',
+    )
+  }
+
+  const second = scored[1]
+  if (
+    second &&
+    top.confidence - second.confidence < ambiguityDelta &&
+    confidence > caps.ambiguous
+  ) {
+    confidence = caps.ambiguous
+    notes.push('Hay dos candidatos casi igual de buenos: conviene elegir a mano.')
+  }
+
+  return { confidence, notes }
+}
+
 export interface GeocodeOutcome {
   readonly status: RecordStatus
   readonly result: GeocodeResult | null
@@ -49,6 +98,8 @@ export interface GeocodeOptions {
   readonly providers: readonly GeocoderProvider[]
   readonly scorer: CandidateScorer
   readonly thresholds: ConfidenceThresholds
+  readonly caps: ConfidenceCaps
+  readonly ambiguityDelta: number
   readonly now: () => string
   readonly sessionCountry?: Country | null
   readonly maxQueries?: number
@@ -58,6 +109,14 @@ export interface GeocodeOptions {
 }
 
 const DEFAULT_MAX_CANDIDATES = 5
+
+interface BestSoFar {
+  readonly candidate: GeocodeCandidate
+  readonly query: GeocodeQuery
+  /** Confianza ya limitada. */
+  readonly confidence: number
+  readonly notes: readonly string[]
+}
 
 function toCandidate(
   candidate: ProviderCandidate,
@@ -82,6 +141,8 @@ function buildResult(
   query: GeocodeQuery,
   candidates: readonly GeocodeCandidate[],
   attempts: readonly GeocodeAttempt[],
+  confidence: number,
+  notes: readonly string[],
   now: string,
 ): GeocodeResult {
   return {
@@ -90,11 +151,13 @@ function buildResult(
     matchedName: best.matchedName,
     matchedAddress: best.matchedAddress,
     provider: best.provider,
-    confidence: best.confidence,
+    // La confianza del resultado es la ya limitada, no la bruta del candidato.
+    confidence,
     queryUsed: query.text,
     manuallyVerified: false,
     candidates,
     attempts,
+    notes,
     resolvedAt: now,
   }
 }
@@ -128,7 +191,7 @@ export async function geocodeRecord(
   const maxCandidates = options.maxCandidates ?? DEFAULT_MAX_CANDIDATES
   const attempts: GeocodeAttempt[] = []
 
-  let best: { candidate: GeocodeCandidate; query: GeocodeQuery } | null = null
+  let best: BestSoFar | null = null
   let bestPool: GeocodeCandidate[] = []
 
   for (const provider of options.providers) {
@@ -166,23 +229,30 @@ export async function geocodeRecord(
         .sort((a, b) => b.confidence - a.confidence)
 
       const top = scored[0]
+      const { confidence, notes } = capConfidence(
+        scored,
+        query,
+        options.caps,
+        options.ambiguityDelta,
+      )
+
       attempts.push({
         provider: provider.name,
         query,
         candidateCount: scored.length,
-        bestConfidence: top?.confidence ?? 0,
+        bestConfidence: confidence,
         error: null,
       })
 
-      if (top && (best === null || top.confidence > best.candidate.confidence)) {
-        best = { candidate: top, query }
+      if (top && (best === null || confidence > best.confidence)) {
+        best = { candidate: top, query, confidence, notes }
         bestPool = scored.slice(0, maxCandidates)
       }
 
-      if (top && top.confidence >= options.thresholds.accept) {
+      if (top && confidence >= options.thresholds.accept) {
         return {
           status: 'FOUND',
-          result: buildResult(top, query, bestPool, attempts, options.now()),
+          result: buildResult(top, query, bestPool, attempts, confidence, notes, options.now()),
           attempts,
         }
       }
@@ -193,7 +263,7 @@ export async function geocodeRecord(
 }
 
 function finish(
-  best: { candidate: GeocodeCandidate; query: GeocodeQuery } | null,
+  best: BestSoFar | null,
   pool: readonly GeocodeCandidate[],
   attempts: readonly GeocodeAttempt[],
   options: GeocodeOptions,
@@ -206,8 +276,16 @@ function finish(
   }
 
   return {
-    status: statusFor(best.candidate.confidence, options.thresholds),
-    result: buildResult(best.candidate, best.query, pool, attempts, options.now()),
+    status: statusFor(best.confidence, options.thresholds),
+    result: buildResult(
+      best.candidate,
+      best.query,
+      pool,
+      attempts,
+      best.confidence,
+      best.notes,
+      options.now(),
+    ),
     attempts,
   }
 }

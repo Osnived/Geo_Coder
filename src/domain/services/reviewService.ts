@@ -78,6 +78,7 @@ export function selectCandidate(
     manuallyVerified: true,
     candidates: previous?.candidates ?? [candidate],
     attempts: previous?.attempts ?? [],
+    notes: [],
     resolvedAt: options.now(),
   }
 
@@ -109,6 +110,7 @@ export function setManualCoordinates(
     manuallyVerified: true,
     candidates: previous?.candidates ?? [],
     attempts: previous?.attempts ?? [],
+    notes: [],
     resolvedAt: options.now(),
   }
 

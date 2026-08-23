@@ -9,8 +9,11 @@ export interface SettingsSlice {
   country: Country | null
   /** Si el pais es obligatorio para dar por valido un registro. */
   requireCountry: boolean
+  /** Usar Photon como respaldo cuando Nominatim no resuelve. */
+  useFallbackProvider: boolean
   setCountry: (country: Country | null) => void
   setRequireCountry: (value: boolean) => void
+  setUseFallbackProvider: (value: boolean) => void
 }
 
 export interface ImportSlice {

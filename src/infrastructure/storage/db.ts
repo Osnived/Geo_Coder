@@ -14,6 +14,7 @@ export interface SessionSettings {
   readonly id: 'current'
   readonly country: Country | null
   readonly requireCountry: boolean
+  readonly useFallbackProvider?: boolean
   readonly updatedAt: string
 }
 

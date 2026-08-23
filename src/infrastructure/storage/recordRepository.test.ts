@@ -101,12 +101,14 @@ describe.each(makeRepositories())('RecordRepository (%s)', (_name, make) => {
     await repository.saveSettings({
       country: { name: 'Colombia', code: 'CO' },
       requireCountry: true,
+      useFallbackProvider: true,
       updatedAt: '2026-01-01T00:00:00.000Z',
     })
 
     const settings = await repository.loadSettings()
     expect(settings?.country).toEqual({ name: 'Colombia', code: 'CO' })
     expect(settings?.requireCountry).toBe(true)
+    expect(settings?.useFallbackProvider).toBe(true)
   })
 })
 

@@ -2,6 +2,7 @@ import type { Country } from '@/domain/models/country'
 import type { EstablishmentRecord } from '@/domain/models/record'
 
 import { createDb, type GeolocatorDb, type SessionSettings } from './db'
+import { migrateRecords } from './migrations'
 
 /**
  * Puerto de persistencia. La aplicacion depende de esta interfaz, no de Dexie,
@@ -17,6 +18,7 @@ export interface RecordRepository {
   saveSettings(settings: {
     country: Country | null
     requireCountry: boolean
+    useFallbackProvider: boolean
     updatedAt: string
   }): Promise<void>
 }
@@ -24,7 +26,8 @@ export interface RecordRepository {
 export function createRecordRepository(db: GeolocatorDb = createDb()): RecordRepository {
   return {
     async loadAll() {
-      return db.records.orderBy('createdAt').toArray()
+      // Se normaliza lo leido: puede venir de una version anterior del modelo.
+      return migrateRecords(await db.records.orderBy('createdAt').toArray())
     },
 
     async addMany(records) {
@@ -66,7 +69,11 @@ export function createInMemoryRepository(): RecordRepository {
 
   return {
     loadAll: () =>
-      Promise.resolve([...records.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt))),
+      Promise.resolve(
+        migrateRecords(
+          [...records.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+        ),
+      ),
     addMany: (incoming) => {
       for (const record of incoming) records.set(record.id, record)
       return Promise.resolve()

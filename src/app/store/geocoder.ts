@@ -9,7 +9,8 @@ import { withRateLimit } from '@/infrastructure/geocoders/withRateLimit'
 import { withRetry } from '@/infrastructure/geocoders/withRetry'
 import { isIndexedDbAvailable } from '@/infrastructure/storage'
 import { createNominatimProvider } from '@/providers/nominatim/NominatimProvider'
-import { NOMINATIM_POLICY } from '@/shared/config/geocoding'
+import { createPhotonProvider } from '@/providers/photon/PhotonProvider'
+import { NOMINATIM_POLICY, PHOTON_POLICY } from '@/shared/config/geocoding'
 
 /**
  * Cadena de proveedores de la aplicacion.
@@ -23,7 +24,8 @@ import { NOMINATIM_POLICY } from '@/shared/config/geocoding'
  * reintento vuelve a respetar el ritmo pactado.
  */
 
-let chain: readonly GeocoderProvider[] | null = null
+let primary: GeocoderProvider | null = null
+let fallback: GeocoderProvider | null = null
 let cache: GeocodeCache | null = null
 
 const stats: CacheStats = { hits: 0, misses: 0 }
@@ -37,30 +39,38 @@ export function getCacheStats(): Readonly<CacheStats> {
   return stats
 }
 
-function build(): readonly GeocoderProvider[] {
-  const nominatim = withCache(
-    withRetry(withRateLimit(createNominatimProvider()), {
-      maxRetries: NOMINATIM_POLICY.maxRetries,
-      baseDelayMs: 1000,
-    }),
+function decorate(
+  provider: GeocoderProvider,
+  maxRetries: number,
+  baseDelayMs: number,
+): GeocoderProvider {
+  return withCache(
+    withRetry(withRateLimit(provider), { maxRetries, baseDelayMs }),
     getCache(),
     stats,
   )
-
-  return [nominatim]
 }
 
-export function getProviders(): readonly GeocoderProvider[] {
-  chain ??= build()
-  return chain
+/**
+ * Proveedores a usar, en orden. Photon solo entra si el usuario activa el
+ * respaldo: cada proveedor extra multiplica las peticiones de un lote.
+ */
+export function getProviders(includeFallback = false): readonly GeocoderProvider[] {
+  primary ??= decorate(createNominatimProvider(), NOMINATIM_POLICY.maxRetries, 1000)
+  if (!includeFallback) return [primary]
+
+  fallback ??= decorate(createPhotonProvider(), PHOTON_POLICY.maxRetries, 1000)
+  return [primary, fallback]
 }
 
 /** Solo para tests: sustituye la cadena de proveedores y la cache. */
 export function setProviders(providers: readonly GeocoderProvider[] | null): void {
-  chain = providers
+  primary = providers?.[0] ?? null
+  fallback = providers?.[1] ?? null
 }
 
 export function setCache(next: GeocodeCache | null): void {
   cache = next
-  chain = null
+  primary = null
+  fallback = null
 }

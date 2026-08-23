@@ -205,6 +205,16 @@ export function ReviewPanel() {
                     </p>
                   </div>
 
+                  {selected.result.notes.length > 0 ? (
+                    <Callout tone="warn">
+                      <ul className="list-inside list-disc">
+                        {selected.result.notes.map((note) => (
+                          <li key={note}>{note}</li>
+                        ))}
+                      </ul>
+                    </Callout>
+                  ) : null}
+
                   <ScoreBreakdown signals={selected.result.candidates[0]?.signals ?? {}} />
 
                   <div className="flex flex-wrap gap-2">

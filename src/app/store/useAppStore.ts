@@ -21,7 +21,12 @@ import {
   setManualCoordinates,
 } from '@/domain/services/reviewService'
 import { createScorer } from '@/domain/services/scoringService'
-import { CONFIDENCE_THRESHOLDS, SCORING_WEIGHTS } from '@/shared/config/geocoding'
+import {
+  AMBIGUITY_DELTA,
+  CONFIDENCE_CAPS,
+  CONFIDENCE_THRESHOLDS,
+  SCORING_WEIGHTS,
+} from '@/shared/config/geocoding'
 
 import { getProviders } from './geocoder'
 import { getRepository } from './repository'
@@ -58,6 +63,16 @@ export function setScorer(next: CandidateScorer): void {
  * de la pantalla de busqueda.
  */
 const AUTO_TARGET_STATUSES: readonly RecordStatus[] = ['PENDING', 'ERROR']
+
+/** Guarda los ajustes de sesion en un solo sitio. */
+function persistSettings(state: AppState): void {
+  void getRepository().saveSettings({
+    country: state.country,
+    requireCountry: state.requireCountry,
+    useFallbackProvider: state.useFallbackProvider,
+    updatedAt: nowIso(),
+  })
+}
 
 /** Aplica una transicion de revision a un registro y la persiste. */
 async function applyReview(
@@ -113,23 +128,21 @@ export const useAppStore = create<AppState>()((set, get) => ({
   // ---------------------------------------------------------------- settings
   country: null,
   requireCountry: true,
+  useFallbackProvider: false,
 
   setCountry: (country) => {
     set({ country })
-    void getRepository().saveSettings({
-      country,
-      requireCountry: get().requireCountry,
-      updatedAt: nowIso(),
-    })
+    persistSettings(get())
   },
 
   setRequireCountry: (requireCountry) => {
     set({ requireCountry })
-    void getRepository().saveSettings({
-      country: get().country,
-      requireCountry,
-      updatedAt: nowIso(),
-    })
+    persistSettings(get())
+  },
+
+  setUseFallbackProvider: (useFallbackProvider) => {
+    set({ useFallbackProvider })
+    persistSettings(get())
   },
 
   // ------------------------------------------------------------------ import
@@ -280,6 +293,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
       isHydrated: true,
       country: settings?.country ?? null,
       requireCountry: settings?.requireCountry ?? true,
+      useFallbackProvider: settings?.useFallbackProvider ?? false,
     })
   },
 
@@ -374,9 +388,11 @@ export const useAppStore = create<AppState>()((set, get) => ({
       }))
 
       const outcome = await geocodeRecord(target, {
-        providers: getProviders(),
+        providers: getProviders(get().useFallbackProvider),
         scorer: getScorer(),
         thresholds: CONFIDENCE_THRESHOLDS,
+        caps: CONFIDENCE_CAPS,
+        ambiguityDelta: AMBIGUITY_DELTA,
         now: nowIso,
         sessionCountry: get().country,
         signal,

@@ -27,6 +27,8 @@ export function SearchPanel() {
   const geocoding = useAppStore((state) => state.geocoding)
   const runGeocoding = useAppStore((state) => state.runGeocoding)
   const cancelGeocoding = useAppStore((state) => state.cancelGeocoding)
+  const useFallbackProvider = useAppStore((state) => state.useFallbackProvider)
+  const setUseFallbackProvider = useAppStore((state) => state.setUseFallbackProvider)
 
   const plan = useMemo(
     () =>
@@ -105,6 +107,24 @@ export function SearchPanel() {
         {geocoding.lastError ? (
           <Callout tone="danger">Ultimo error del proveedor: {geocoding.lastError}</Callout>
         ) : null}
+
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={useFallbackProvider}
+            onChange={(event) => {
+              setUseFallbackProvider(event.target.checked)
+            }}
+          />
+          <span>
+            Usar Photon como respaldo
+            <span className="text-ink-faint block text-xs">
+              Se consulta solo si Nominatim no encuentra nada suficientemente bueno. Encuentra mas
+              locales por nombre, pero duplica el tiempo de los registros dificiles.
+            </span>
+          </span>
+        </label>
 
         <div className="text-ink-faint flex flex-wrap items-center gap-2 text-xs">
           <span>
@@ -201,6 +221,13 @@ export function SearchPanel() {
                     <p>
                       Consulta que funciono: <code>{record.result.queryUsed}</code>
                     </p>
+                    {record.result.notes.length > 0 ? (
+                      <ul className="text-warn list-inside list-disc">
+                        {record.result.notes.map((note) => (
+                          <li key={note}>{note}</li>
+                        ))}
+                      </ul>
+                    ) : null}
                     <div>
                       <p className="text-ink mb-1 font-medium">Por que este score</p>
                       <ScoreBreakdown signals={record.result.candidates[0]?.signals ?? {}} />
