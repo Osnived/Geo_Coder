@@ -2,7 +2,7 @@
 
 Aplicación web **local** para geolocalizar y enriquecer registros de establecimientos comerciales a partir de Excel o de ingreso manual.
 
-Estado actual: **MVP 1 — importación, mapeo, entrada manual y normalización**. Todavía no geocodifica.
+Los 10 MVP del plan están implementados: importación, mapeo, entrada manual, construcción de consultas, geocodificación, scoring, cache, mapa, revisión manual, exportación, proveedor de respaldo y una capa de IA opcional.
 
 ---
 
@@ -10,8 +10,9 @@ Estado actual: **MVP 1 — importación, mapeo, entrada manual y normalización*
 
 - Node.js 20 o superior (probado con 24.16).
 - Un navegador moderno.
+- Conexión a internet para consultar los geocodificadores.
 
-No hace falta servidor, base de datos ni cuenta de ningún proveedor. Todo corre en tu máquina.
+No hace falta servidor propio, base de datos ni cuenta de ningún proveedor de pago.
 
 ## Puesta en marcha
 
@@ -38,24 +39,70 @@ Abre `http://localhost:5173`.
 | `npm run typecheck` | TypeScript sin emitir |
 | `npm run check` | lint + typecheck + tests + build |
 
-## Qué se puede hacer hoy
+## Cómo se usa
 
-1. Cargar un archivo `.xlsx`, `.xlsm`, `.csv` o `.tsv`.
-2. Elegir la hoja y ajustar cuál fila trae los encabezados.
-3. Ver una vista previa de los datos tal como están en el archivo.
-4. Revisar y corregir el mapeo de columnas a los campos normalizados.
-5. Crear registros manualmente.
-6. Combinar registros importados y manuales en una sola tabla.
-7. Editar, duplicar y eliminar registros.
-8. Filtrar por texto, origen, estado y por registros con problemas.
-9. Definir un país global que restringe las búsquedas.
-10. Cerrar y reabrir el navegador sin perder la sesión (IndexedDB).
+La aplicación son seis pestañas que siguen el flujo de trabajo.
 
-Hay un archivo de prueba en [`samples/ejemplo-tiendas.xlsx`](samples/ejemplo-tiendas.xlsx) con casos incómodos a propósito: título suelto antes de los encabezados, columna duplicada, columna irrelevante, fila en blanco, registro casi vacío y acentos.
+### 1. Importar Excel
 
-## Qué **no** hace todavía
+Carga `.xlsx`, `.xlsm`, `.csv` o `.tsv`. Elige la hoja, confirma cuál fila trae los encabezados, revisa la vista previa y corrige el mapeo de columnas. La detección automática es siempre una sugerencia.
 
-Geocodificación, scoring, mapa, revisión manual de candidatos, exportación a Excel, IA. Están planificados en los MVP siguientes: ver [PROJECT_STATUS.md](PROJECT_STATUS.md).
+### 2. Entrada manual
+
+Crea registros a mano. Producen exactamente el mismo modelo que los importados y conviven en la misma tabla.
+
+### 3. Registros
+
+Tabla unificada con filtros por texto, origen y estado. Edición en línea, duplicado y borrado. Cada registro muestra sus problemas de validación sin que nada se descarte.
+
+### 4. Búsqueda
+
+Muestra **exactamente** qué se va a consultar, registro por registro, antes de gastar una sola petición. Desde aquí se lanza la geocodificación, se detiene y se retoma.
+
+### 5. Revisión
+
+Cola de los registros que necesitan una decisión humana. Para cada uno: datos originales, consulta usada, resultado, desglose del score, candidatos alternativos y un mapa. Puedes aceptar, rechazar, elegir otro candidato o marcar el punto a mano.
+
+### 6. Exportar
+
+Genera un `.xlsx` que **conserva todas las columnas del archivo original** y añade los campos normalizados y las columnas de resultado.
+
+## Sobre la precisión
+
+La aplicación prefiere pedirte que revises antes que darte unas coordenadas equivocadas.
+
+Un caso real que ilustra por qué: buscar `Toks, Ciudad de Mexico` devuelve *algún* Toks de la cadena con todas las señales coincidiendo al 100%, porque nada en el registro distingue una sucursal de otra. En vez de aceptarlo, la confianza se limita al 75% y el registro entra en la cola de revisión con el motivo escrito.
+
+Las dos situaciones que fuerzan revisión:
+
+- La consulta no incluyó dirección ni código postal.
+- Dos candidatos quedaron prácticamente empatados.
+
+**Cuanto mejor sea la dirección en tu Excel, más registros se resolverán solos.** Sin dirección, espera revisar a mano.
+
+## Proveedores y límites
+
+| Proveedor | Papel | Límite |
+| --- | --- | --- |
+| Nominatim (OpenStreetMap) | Principal | **1 consulta por segundo**, impuesto por la aplicación |
+| Photon | Respaldo, opcional | Se activa en la pestaña Búsqueda |
+
+Un lote de N registros tarda del orden de N a 4N segundos, porque cada registro puede necesitar varias estrategias. Las consultas repetidas salen de la cache y no cuestan nada.
+
+No se promete una tasa de acierto del 100%. Depende de la calidad de tus datos y de lo que exista en OpenStreetMap.
+
+## Asistente de IA (opcional, apagado)
+
+En la pestaña Ajustes. Se conecta a un modelo que corre **en tu máquina** (Ollama, LM Studio) mediante su API compatible con OpenAI.
+
+Solo actúa en dos sitios, y en ambos después de que las reglas deterministas se hayan rendido:
+
+- Interpretar columnas que la detección automática no reconoció.
+- Proponer búsquedas alternativas para un registro que no se encontró.
+
+No se usa ningún servicio de pago: una clave de API en el navegador quedaría a la vista de cualquiera. Para un modelo alojado, apunta el endpoint a un proxy propio que guarde la clave en el servidor.
+
+Si no hay ningún modelo escuchando, la aplicación funciona igual.
 
 ## Formatos de Excel
 
@@ -65,9 +112,11 @@ Para CSV se detecta automáticamente el separador (`,`, `;`, tabulador o `|`) y 
 
 ## Privacidad
 
-Los archivos se leen y procesan en tu navegador. No se suben a ningún servidor. Cuando lleguen los MVP de geocodificación, sí se enviarán consultas de texto a proveedores externos (Nominatim, Photon), y eso quedará indicado en la interfaz.
+Los archivos se leen y procesan en tu navegador; no se suben a ningún sitio. Lo que sí sale a internet son las **consultas de texto** a Nominatim y Photon: nombre del local, dirección, ciudad y país. Nada más.
+
+Hay un archivo de prueba en [`samples/ejemplo-tiendas.xlsx`](samples/ejemplo-tiendas.xlsx) con casos incómodos a propósito: título suelto antes de los encabezados, columna duplicada, columna irrelevante, fila en blanco, registro casi vacío y acentos.
 
 ## Documentación
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — estructura del código y decisiones tomadas.
-- [PROJECT_STATUS.md](PROJECT_STATUS.md) — qué está hecho y qué sigue.
+- [PROJECT_STATUS.md](PROJECT_STATUS.md) — qué está hecho, qué se verificó y qué queda abierto.

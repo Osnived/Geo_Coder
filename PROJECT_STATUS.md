@@ -3,98 +3,103 @@
 Última actualización: 2026-08-23
 Rama: `feature/geolocation-mvp-1`
 
-## MVP 1 — completado
+Los 10 MVP del plan están implementados. Nada se ha subido ni fusionado.
 
-Importación, mapeo, entrada manual y normalización.
+## Resumen
 
-### Criterios de aceptación (spec §25)
-
-| # | Criterio | Estado |
+| MVP | Contenido | Estado |
 | --- | --- | --- |
-| 1 | Abrir la aplicación localmente | ✅ `npm run dev` |
-| 2 | Cargar un Excel | ✅ `.xlsx`, `.xlsm`, `.csv`, `.tsv` |
-| 3 | Seleccionar una hoja | ✅ con nº de filas y columnas; las vacías se deshabilitan |
-| 4 | Ver sus columnas | ✅ |
-| 5 | Ver una preview | ✅ primeras 25 filas, con la numeración real del archivo |
-| 6 | Mapear las columnas | ✅ sugerencia automática con nivel de certeza |
-| 7 | Corregir manualmente el mapeo | ✅ incluido «ignorar columna» |
-| 8 | Crear registros manualmente | ✅ |
-| 9 | Combinar manuales e importados | ✅ mismo modelo, misma tabla |
-| 10 | Ver todos los registros normalizados | ✅ con filtros |
-| 11 | Editar registros | ✅ edición en línea |
-| 12 | Eliminar registros | ✅ individual y por selección múltiple |
-| 13 | Validar datos incompletos | ✅ errores y avisos, sin descartar nada |
-| 14 | Preparar para el MVP de geocodificación | ✅ modelos, estados y configuración ya definidos |
+| 1 | Importación + normalización + entrada manual | ✅ |
+| 2 | Query Builder | ✅ |
+| 3 | Geocodificación con Nominatim | ✅ |
+| 4 | Scoring + candidatos + estados | ✅ |
+| 5 | Cache + rate limiting + reintentos | ✅ |
+| 6 | Mapa + revisión manual | ✅ |
+| 7 | Corrección manual | ✅ |
+| 8 | Exportación Excel | ✅ |
+| 9 | Proveedor secundario / fallback | ✅ |
+| 10 | IA opcional | ✅ (apagada por defecto) |
 
-### Verificación
+## Verificación
 
-- `npm run lint` — sin errores ni avisos.
-- `npm run typecheck` — sin errores (TypeScript estricto, con `noUncheckedIndexedAccess` y `exactOptionalPropertyTypes`).
-- `npm test` — 123 tests, todos en verde.
-- `npm run build` — correcto. 351 KB el bundle principal, 937 KB ExcelJS en un chunk aparte que solo se descarga al abrir un archivo.
-- `npm audit` — 0 vulnerabilidades.
+| Comprobación | Resultado |
+| --- | --- |
+| `npm run lint` | Sin errores ni avisos |
+| `npm run typecheck` | Sin errores (TS estricto, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`) |
+| `npm test` | 302 tests, todos en verde |
+| `npm run build` | Correcto |
+| `npm audit` | 0 vulnerabilidades |
 
-### Casos probados de la spec §29
+Tamaño de la build: 375 kB el bundle inicial; ExcelJS (937 kB) y la pantalla de revisión con Leaflet (161 kB) van en chunks aparte que solo se descargan al usarlos.
+
+## Qué se probó de verdad, en el navegador
+
+No solo tests unitarios. Contra el servidor de desarrollo y los servicios reales:
+
+| Prueba | Resultado |
+| --- | --- |
+| Cargar `samples/ejemplo-tiendas.xlsx` | 3 hojas detectadas, la vacía deshabilitada |
+| Detección de encabezados | Salta el título suelto, identifica la fila 3 |
+| Mapeo automático | 7 de 9 columnas; `VENTAS 2025` ignorada, la segunda `CIUDAD` marcada como duplicada |
+| Filas en blanco | El botón anuncia 5 registros y crea 5, no 6 |
+| País global | Al fijar Colombia desaparecen los errores de país |
+| Excel + manual | 5 importados y 1 manual conviven en la misma tabla |
+| Editar / duplicar / eliminar | Correcto; los datos originales quedan intactos |
+| Persistencia | Tras recargar la página se conservan registros, ediciones y ajustes |
+| Geocodificación con Nominatim | `Olímpica Prado` resuelto a 11.00573, -74.81393 |
+| Scoring | 83% con la dirección al 15%, porque OSM dice Carrera 52 y el Excel Cra. 54 |
+| Cache | La segunda búsqueda idéntica no genera petición |
+| Mapa | Tiles de OSM cargando, marcadores visibles |
+| Marcar punto a mano | Pasa a MANUALLY_VERIFIED con proveedor `manual` y confianza 100% |
+| Aceptar resultado | Sale de la cola de revisión |
+| Photon como respaldo | Resolvió un registro que Nominatim no; proveedor `photon` en el resultado |
+| Tope por ambigüedad | `Toks, Ciudad de Mexico` limitado al 75% con el motivo explicado |
+| IA sin modelo escuchando | Mensaje claro y la aplicación sigue funcionando |
+
+## Casos de la especificación §29
 
 | Caso | Cubierto en |
 | --- | --- |
-| Excel vacío | tests de `grid` y `workbookReader`; la hoja se marca «vacía» y no se puede elegir |
-| Columnas desconocidas | quedan sin sugerencia y se ignoran por defecto |
-| Columnas duplicadas | gana la de mayor certeza; la otra se marca «duplicada» |
-| Registros incompletos | validación con avisos `ONLY_CLIENT` y `NO_LOCALITY` |
-| Registros completamente vacíos | error `EMPTY_RECORD`; las filas en blanco del archivo no generan registro |
-| Datos manuales | tests de store y de formulario |
-| Excel + manual | test de combinación |
-| Diferentes países | catálogo ISO completo; el archivo de prueba trae Colombia y México |
-| Caracteres especiales y acentos | tests de `text`, `workbookReader` y el archivo de prueba |
-| Nombres repetidos | la tabla los admite; los duplicados reales se abordarán con el scoring |
+| Excel vacío | Tests de `grid` y `workbookReader`; la hoja se marca vacía y no se puede elegir |
+| Columnas desconocidas | Quedan sin sugerencia y se ignoran por defecto |
+| Columnas duplicadas | Gana la de mayor certeza; la otra se marca «duplicada» |
+| Registros incompletos | Avisos `ONLY_CLIENT` y `NO_LOCALITY` |
+| Registros completamente vacíos | Error `EMPTY_RECORD`; las filas en blanco no generan registro |
+| Datos manuales | Tests de store y de formulario |
+| Excel + manual | Test de combinación |
+| Diferentes países | Catálogo ISO completo; probado con Colombia y México |
+| Caracteres especiales y acentos | Tests de `text`, `similarity`, `workbookReader` y el archivo de prueba |
+| Nombres repetidos | Los topes de confianza los mandan a revisión en lugar de resolverlos mal |
 
-### Prueba manual realizada
+## Fallos encontrados y corregidos durante el desarrollo
 
-Con [`samples/ejemplo-tiendas.xlsx`](samples/ejemplo-tiendas.xlsx) en el navegador:
+Vale la pena dejarlos escritos porque explican decisiones del código:
 
-- Se detectan las 3 hojas y se deshabilita la vacía.
-- Se salta el título suelto y se identifica la fila 3 como encabezado.
-- Se mapean 7 de 9 columnas; `VENTAS 2025` se ignora y la segunda `CIUDAD` se marca duplicada.
-- La fila en blanco no genera registro: el botón anuncia 5 y se crean 5.
-- Al fijar Colombia como país global, los errores de país desaparecen.
-- Se agrega un registro manual y convive con los importados (5 + 1).
-- Editar, duplicar y eliminar funcionan.
-- Tras recargar la página se conservan los 6 registros, la edición y el país.
+1. **Papa Parse detecta mal el `;`** de los CSV de Excel en español. Se sustituyó por detección propia.
+2. **Photon devuelve 400 con `lang=es`.** Solo admite `default`, `de`, `en`, `fr`. Se omite el parámetro.
+3. **jsdom no implementa `Blob.arrayBuffer`.** Se rellena en el setup de tests, sin tocar el código de producción.
+4. **Añadir el campo `notes` rompió la app al recargar** con datos ya guardados en IndexedDB. Se añadió una capa de migración en el borde de la persistencia.
+5. **El botón prometía más registros de los que creaba** cuando el Excel tenía filas en blanco. Ahora cuenta las filas que realmente generan registro.
+6. **Los `NOT_FOUND` se reintentaban en cada ejecución**, gastando peticiones para obtener el mismo vacío. Ahora es una acción explícita.
+7. **Un Toks equivocado puntuaba 100%.** Se añadieron los topes de confianza por poca especificidad y por ambigüedad.
 
 ## Deuda y puntos abiertos
 
 | Tema | Detalle |
 | --- | --- |
-| Tabla sin virtualizar | Con decenas de miles de registros la tabla se volverá lenta. Se resolverá cuando aparezca el problema, no antes. |
-| Pesos de scoring sin validar | Los valores de `shared/config/geocoding.ts` son un punto de partida. Deben ajustarse con datos reales en el MVP 4. |
-| Sin `.xls` | Decisión consciente, documentada en ARCHITECTURE.md. |
-| Sin exportación | Llega en el MVP 8. Los datos originales ya se conservan para poder reconstruir el archivo. |
+| **Pesos de scoring sin validar con volumen** | Los valores de `shared/config/geocoding.ts` funcionan en las pruebas hechas, pero no se han calibrado contra un dataset grande y real. Es lo primero que ajustaría con datos tuyos. |
+| **Tabla sin virtualizar** | Con decenas de miles de registros la tabla de Registros se volverá lenta. No se ha optimizado porque aún no es un problema medido. |
+| **Sin `.xls`** | Decisión consciente, documentada en ARCHITECTURE.md. |
+| **IA solo con modelo local** | Un servicio alojado necesitaría un proxy con la clave en el servidor. La arquitectura lo permite; no está hecho. |
+| **Sin control de duplicados** | Si el Excel trae la misma tienda dos veces, se geocodifica dos veces (la segunda sale de cache, pero ocupa dos registros). |
+| **Volumen y Nominatim** | Un lote de miles de registros a 1 consulta por segundo son horas. Es un límite del servicio, no del código. Para volúmenes grandes habría que valorar una instancia propia de Nominatim o un proveedor de pago. |
 
-## Próximo: MVP 2 — Query Builder
+## Posibles siguientes pasos
 
-Construir las consultas geográficas a partir de los campos disponibles, con estrategias alternativas cuando falten datos (spec §6).
+Por orden de valor, si quieres continuar:
 
-Trabajo previsto:
-
-- `domain/services/queryBuilder.ts`: genera una lista ordenada de consultas por registro.
-- Estrategias en cascada, de la más específica a la más genérica.
-- Vista previa en la interfaz: qué se buscará exactamente para cada registro, antes de gastar una sola petición.
-- Tests con registros completos, parciales y ambiguos.
-
-No requiere red ni proveedores todavía.
-
-## Plan por MVP
-
-| MVP | Contenido | Estado |
-| --- | --- | --- |
-| 1 | Importación + normalización + entrada manual | ✅ completado |
-| 2 | Query Builder | pendiente |
-| 3 | Geocodificación con Nominatim | pendiente |
-| 4 | Scoring + candidatos + estados | pendiente |
-| 5 | Cache + rate limiting + reintentos | pendiente |
-| 6 | Mapa + revisión manual | pendiente |
-| 7 | Corrección manual | pendiente |
-| 8 | Exportación Excel | pendiente |
-| 9 | Proveedor secundario / fallback | pendiente |
-| 10 | IA opcional | pendiente |
+1. **Calibrar el scoring** con un Excel real tuyo y ajustar pesos y umbrales.
+2. **Detección de duplicados** antes de geocodificar.
+3. **Reanudar lotes largos** guardando el progreso, para poder cerrar el navegador a mitad.
+4. **Instancia propia de Nominatim** si el volumen lo justifica: quita el límite de 1 consulta por segundo.
+5. **Backend mínimo** si se quiere compartir sesiones entre personas o usar un modelo de IA alojado.
