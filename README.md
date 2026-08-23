@@ -69,7 +69,13 @@ Cola de los registros que necesitan una decisión humana. Para cada uno: datos o
 
 ### 6. Mapa
 
-Todos los registros localizados en un solo mapa. La lista de la izquierda y el mapa son la misma selección: eliges en la lista y se resalta el punto, o pinchas el punto y se resalta la fila. Se puede filtrar por lote, por verificados manualmente y por texto. El mapa se encuadra solo para que entren todos los puntos.
+Todos los registros localizados en un solo mapa.
+
+- **Tocas una tarjeta de la lista** y el mapa vuela a ese punto con zoom cercano.
+- **Pinchas un marcador** y se resalta su fila, pero el mapa no se mueve: así no pierdes la panorámica mientras comparas puntos.
+- **Ver todos** vuelve a encuadrar el conjunto completo.
+
+Se puede filtrar por lote, por verificados manualmente y por texto.
 
 ### 7. Exportar
 

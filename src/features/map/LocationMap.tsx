@@ -22,11 +22,32 @@ export interface MapPoint {
   readonly detail?: string
 }
 
+/**
+ * Orden de acercarse a un punto concreto.
+ *
+ * `nonce` es lo que dispara el movimiento: permite volver al mismo punto dos
+ * veces seguidas, cosa que no se podria si el efecto dependiera solo de las
+ * coordenadas.
+ */
+export interface FlyTarget {
+  readonly latitude: number
+  readonly longitude: number
+  readonly zoom?: number
+  readonly nonce: number
+}
+
 const OSM_TILES = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
 const OSM_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
 
 /** Zoom al que se acerca el mapa cuando solo hay un punto que encuadrar. */
 const SINGLE_POINT_ZOOM = 16
+/** Zoom al acercarse a un registro concreto: suficiente para ver la manzana. */
+const FLY_ZOOM = 17
+const FLY_DURATION_S = 0.8
+/** Margen sobre la duracion antes de comprobar si el vuelo llego. */
+const ARRIVAL_MARGIN_MS = 300
+/** Distancia por debajo de la cual se considera que ya se llego. */
+const ARRIVAL_TOLERANCE_M = 5
 
 function pinIcon(selected: boolean): L.DivIcon {
   const fill = selected ? 'var(--color-accent, #2563eb)' : 'var(--color-warn, #b45309)'
@@ -45,7 +66,7 @@ function pinIcon(selected: boolean): L.DivIcon {
   })
 }
 
-/** Recentra el mapa cuando cambia el punto principal. */
+/** Recentra el mapa cuando cambia el punto principal, sin tocar el zoom. */
 function Recenter({ latitude, longitude }: { latitude: number; longitude: number }) {
   const map = useMap()
   useEffect(() => {
@@ -55,13 +76,17 @@ function Recenter({ latitude, longitude }: { latitude: number; longitude: number
 }
 
 /**
- * Encuadra todos los puntos. Se reejecuta solo cuando cambia el conjunto, no
- * cuando cambia cual esta seleccionado: mover el mapa bajo el raton mientras
- * el usuario navega la lista resulta molesto.
+ * Encuadra todos los puntos.
+ *
+ * Depende del conjunto de coordenadas, no de cual esta seleccionada: si
+ * dependiera de la seleccion, el mapa se movería bajo el raton cada vez que el
+ * usuario recorre la lista. Para acercarse a uno concreto esta `FlyTo`.
+ *
+ * `fitNonce` permite volver a encuadrar a peticion, tras haberse acercado.
  */
-function FitBounds({ points }: { points: readonly MapPoint[] }) {
+function FitBounds({ points, fitNonce }: { points: readonly MapPoint[]; fitNonce: number }) {
   const map = useMap()
-  const key = points
+  const boundsKey = points
     .map((point) => `${String(point.latitude)},${String(point.longitude)}`)
     .join('|')
 
@@ -74,10 +99,49 @@ function FitBounds({ points }: { points: readonly MapPoint[] }) {
     } else {
       map.fitBounds(bounds, { padding: [40, 40] })
     }
-    // `key` resume el conjunto de coordenadas; `points` cambia de identidad
-    // en cada render aunque su contenido sea el mismo.
+    // `boundsKey` resume el conjunto: `points` cambia de identidad en cada
+    // render aunque su contenido sea el mismo.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, key])
+  }, [map, boundsKey, fitNonce])
+
+  return null
+}
+
+/**
+ * Se acerca al punto indicado.
+ *
+ * `flyTo` anima el desplazamiento con `requestAnimationFrame`, que el
+ * navegador pausa cuando la pestana no esta pintando (segundo plano, ventana
+ * minimizada, algunos contenedores embebidos). En ese caso la animacion nunca
+ * termina y el mapa se queda donde estaba.
+ *
+ * Por eso se comprueba despues: si no llego, se coloca sin animacion. La
+ * animacion es un adorno; llegar al punto es el requisito.
+ */
+function FlyTo({ target }: { target: FlyTarget }) {
+  const map = useMap()
+
+  useEffect(() => {
+    const destination = L.latLng(target.latitude, target.longitude)
+    const zoom = target.zoom ?? FLY_ZOOM
+
+    map.flyTo(destination, zoom, { duration: FLY_DURATION_S })
+
+    const timer = setTimeout(
+      () => {
+        const arrived =
+          map.getZoom() === zoom && map.getCenter().distanceTo(destination) < ARRIVAL_TOLERANCE_M
+        if (!arrived) map.setView(destination, zoom, { animate: false })
+      },
+      FLY_DURATION_S * 1000 + ARRIVAL_MARGIN_MS,
+    )
+
+    return () => {
+      clearTimeout(timer)
+    }
+    // El disparador es `nonce`: permite repetir el vuelo al mismo punto.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, target.nonce])
 
   return null
 }
@@ -97,6 +161,10 @@ export interface LocationMapProps {
   readonly zoom?: number
   /** Encuadra automaticamente todos los puntos en lugar de centrar en uno. */
   readonly fitToPoints?: boolean
+  /** Cambiar este numero fuerza un reencuadre de todos los puntos. */
+  readonly fitNonce?: number
+  /** Punto al que acercarse. Cada `nonce` nuevo dispara el movimiento. */
+  readonly flyTo?: FlyTarget | null
   readonly heightClass?: string
   readonly onPickPoint?: (latitude: number, longitude: number) => void
   readonly onSelectPoint?: (id: string) => void
@@ -107,6 +175,8 @@ export function LocationMap({
   center,
   zoom = 15,
   fitToPoints = false,
+  fitNonce = 0,
+  flyTo = null,
   heightClass = 'h-80',
   onPickPoint,
   onSelectPoint,
@@ -121,10 +191,12 @@ export function LocationMap({
       <TileLayer url={OSM_TILES} attribution={OSM_ATTRIBUTION} maxZoom={19} />
 
       {fitToPoints ? (
-        <FitBounds points={points} />
+        <FitBounds points={points} fitNonce={fitNonce} />
       ) : (
         <Recenter latitude={center.latitude} longitude={center.longitude} />
       )}
+
+      {flyTo ? <FlyTo target={flyTo} /> : null}
 
       {onPickPoint ? <ClickHandler onPick={onPickPoint} /> : null}
 

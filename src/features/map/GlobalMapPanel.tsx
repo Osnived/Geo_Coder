@@ -1,14 +1,14 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 
 import { useAppStore } from '@/app/store'
-import { Badge, Callout, Panel, Select, TextInput } from '@/components/ui/primitives'
+import { Badge, Button, Callout, Panel, Select, TextInput } from '@/components/ui/primitives'
 import { describeBatch, formatTimestamp, LEGACY_BATCH } from '@/domain/models/batch'
 import type { EstablishmentRecord } from '@/domain/models/record'
 import { STATUS_LABELS } from '@/domain/models/status'
 import { canonicalize } from '@/domain/rules/text'
 import { cx } from '@/shared/cx'
 
-import { LocationMap, type MapPoint } from './LocationMap'
+import { LocationMap, type FlyTarget, type MapPoint } from './LocationMap'
 
 /**
  * Mapa con todos los registros localizados.
@@ -54,6 +54,11 @@ export function GlobalMapPanel() {
   const [onlyVerified, setOnlyVerified] = useState(false)
   const [search, setSearch] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [flyTo, setFlyTo] = useState<FlyTarget | null>(null)
+  const [fitNonce, setFitNonce] = useState(0)
+
+  // Cada vuelo necesita un disparador distinto para poder repetirse.
+  const flightNumber = useRef(0)
 
   const batchLabel = useMemo(() => {
     const byId = new Map(batches.map((batch) => [batch.id, describeBatch(batch)]))
@@ -98,6 +103,33 @@ export function GlobalMapPanel() {
 
   const selected = visible.find((record) => record.id === selectedId) ?? null
 
+  /** Elegir en la lista selecciona el registro y acerca el mapa a su punto. */
+  const selectFromList = useCallback((record: EstablishmentRecord) => {
+    const result = record.result
+    if (!result) return
+
+    setSelectedId(record.id)
+    flightNumber.current += 1
+    setFlyTo({
+      latitude: result.latitude,
+      longitude: result.longitude,
+      nonce: flightNumber.current,
+    })
+  }, [])
+
+  /**
+   * Pinchar un marcador solo selecciona: el punto ya esta a la vista y
+   * acercarse haria perder la panoramica que el usuario estaba mirando.
+   */
+  const selectFromMap = useCallback((id: string) => {
+    setSelectedId(id)
+  }, [])
+
+  const showAll = useCallback(() => {
+    setFlyTo(null)
+    setFitNonce((current) => current + 1)
+  }, [])
+
   if (records.length === 0) {
     return (
       <Panel title="Mapa">
@@ -133,6 +165,7 @@ export function GlobalMapPanel() {
             onChange={(event) => {
               setBatchId(event.target.value)
               setSelectedId(null)
+              setFlyTo(null)
             }}
           >
             <option value="all">Todos los lotes</option>
@@ -165,7 +198,7 @@ export function GlobalMapPanel() {
                   <button
                     type="button"
                     onClick={() => {
-                      setSelectedId(record.id === selectedId ? null : record.id)
+                      selectFromList(record)
                     }}
                     className={cx(
                       'w-full rounded-md px-2 py-1.5 text-left text-sm',
@@ -191,9 +224,16 @@ export function GlobalMapPanel() {
           title="Mapa"
           description="Pincha un punto para verlo en la lista. El mapa se encuadra solo."
           actions={
-            selected ? (
-              <Badge tone={STATUS_TONE[selected.status]}>{STATUS_LABELS[selected.status]}</Badge>
-            ) : undefined
+            <>
+              {selected ? (
+                <Badge tone={STATUS_TONE[selected.status]}>{STATUS_LABELS[selected.status]}</Badge>
+              ) : null}
+              {visible.length > 1 ? (
+                <Button onClick={showAll} title="Vuelve a encuadrar todos los puntos">
+                  Ver todos
+                </Button>
+              ) : null}
+            </>
           }
         >
           <div className="flex flex-col gap-3">
@@ -207,8 +247,10 @@ export function GlobalMapPanel() {
               points={points}
               center={FALLBACK_CENTER}
               fitToPoints
+              fitNonce={fitNonce}
+              flyTo={flyTo}
               heightClass="h-[34rem]"
-              onSelectPoint={setSelectedId}
+              onSelectPoint={selectFromMap}
             />
 
             {selected?.result ? (
