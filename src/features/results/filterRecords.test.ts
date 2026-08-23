@@ -18,6 +18,7 @@ function record(
     ...createRecord({
       id: `r-${String(counter)}`,
       source: 'manual',
+      batchId: 'lote-test',
       fields,
       timestamp: FIXED_NOW,
     }),
@@ -30,6 +31,7 @@ const NO_FILTERS: RecordFilters = {
   source: 'all',
   status: 'all',
   onlyWithIssues: false,
+  batchId: 'all',
 }
 
 const OPTIONS = { requireCountry: true }
@@ -105,5 +107,31 @@ describe('filterRecords', () => {
       OPTIONS,
     )
     expect(result.map((item) => item.id)).toEqual([complete.id])
+  })
+})
+
+describe('filtro por lote', () => {
+  const deArchivo = record({ city: 'Bogota', location_name: 'Exito', country: 'Colombia' })
+  const deOtro = {
+    ...record({ city: 'Cali', location_name: 'Olimpica', country: 'Colombia' }),
+    batchId: 'lote-2',
+  }
+
+  it('sin filtro devuelve los de todos los lotes', () => {
+    expect(filterRecords([deArchivo, deOtro], NO_FILTERS, OPTIONS)).toHaveLength(2)
+  })
+
+  it('filtra por el lote indicado', () => {
+    const result = filterRecords([deArchivo, deOtro], { ...NO_FILTERS, batchId: 'lote-2' }, OPTIONS)
+    expect(result.map((item) => item.id)).toEqual([deOtro.id])
+  })
+
+  it('se combina con los demas filtros', () => {
+    const result = filterRecords(
+      [deArchivo, deOtro],
+      { ...NO_FILTERS, batchId: 'lote-2', text: 'exito' },
+      OPTIONS,
+    )
+    expect(result).toEqual([])
   })
 })

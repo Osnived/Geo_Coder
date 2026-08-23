@@ -35,6 +35,7 @@ beforeEach(() => {
   useAppStore.setState({
     ...INITIAL,
     records: [],
+    batches: [],
     isHydrated: false,
     country: null,
     requireCountry: true,
@@ -46,7 +47,7 @@ beforeEach(() => {
     mapping: [],
     displacedColumns: {},
     importError: null,
-    filters: { text: '', source: 'all', status: 'all', onlyWithIssues: false },
+    filters: { text: '', source: 'all', status: 'all', onlyWithIssues: false, batchId: 'all' },
   })
 })
 
@@ -201,5 +202,109 @@ describe('persistencia de la sesion', () => {
     expect(state.isHydrated).toBe(true)
     expect(state.records).toHaveLength(1)
     expect(state.country).toEqual({ name: 'Mexico', code: 'MX' })
+  })
+})
+
+describe('lotes', () => {
+  it('cada importacion crea su lote con archivo, hoja y fecha', async () => {
+    const file = await xlsxFile('tiendas.xlsx', {
+      Tiendas: [
+        ['CLIENTE', 'CIUDAD'],
+        ['Olimpica', 'Barranquilla'],
+      ],
+    })
+    await useAppStore.getState().openFile(file)
+    await useAppStore.getState().confirmImport()
+
+    const { batches, records } = useAppStore.getState()
+    expect(batches).toHaveLength(1)
+    expect(batches[0]).toMatchObject({
+      label: 'tiendas.xlsx',
+      sheetName: 'Tiendas',
+      source: 'excel',
+      importedCount: 1,
+    })
+    expect(batches[0]?.createdAt).not.toBe('')
+    expect(records[0]?.batchId).toBe(batches[0]?.id)
+  })
+
+  it('importar dos veces el mismo archivo genera dos lotes distintos', async () => {
+    const make = () =>
+      xlsxFile('tiendas.xlsx', {
+        Tiendas: [
+          ['CLIENTE', 'CIUDAD'],
+          ['Olimpica', 'Barranquilla'],
+        ],
+      })
+
+    await useAppStore.getState().openFile(await make())
+    await useAppStore.getState().confirmImport()
+    await useAppStore.getState().openFile(await make())
+    await useAppStore.getState().confirmImport()
+
+    const { batches, records } = useAppStore.getState()
+    expect(batches).toHaveLength(2)
+    expect(batches[0]?.id).not.toBe(batches[1]?.id)
+    expect(new Set(records.map((record) => record.batchId)).size).toBe(2)
+  })
+
+  it('no crea lote si la hoja no genera ningun registro', async () => {
+    const file = csvFile('vacio.csv', 'CLIENTE\n')
+    await useAppStore.getState().openFile(file)
+    await useAppStore.getState().confirmImport()
+
+    expect(useAppStore.getState().batches).toEqual([])
+  })
+
+  it('los registros manuales del dia comparten un solo lote', async () => {
+    await useAppStore.getState().addManualRecord({ client: 'Toks' })
+    await useAppStore.getState().addManualRecord({ client: 'Starbucks' })
+
+    const { batches, records } = useAppStore.getState()
+    expect(batches).toHaveLength(1)
+    expect(batches[0]?.source).toBe('manual')
+    expect(new Set(records.map((record) => record.batchId)).size).toBe(1)
+  })
+
+  it('cada registro guarda su fecha y hora de creacion', async () => {
+    await useAppStore.getState().addManualRecord({ client: 'Toks' })
+    const record = useAppStore.getState().records[0]
+
+    expect(record?.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/)
+    expect(record?.updatedAt).toBe(record?.createdAt)
+  })
+
+  it('duplicar deja la copia en el mismo lote', async () => {
+    const id = await useAppStore.getState().addManualRecord({ client: 'Toks' })
+    await useAppStore.getState().duplicateRecord(id)
+
+    const records = useAppStore.getState().records
+    expect(records[1]?.batchId).toBe(records[0]?.batchId)
+  })
+
+  it('borrar un lote se lleva sus registros y deja los demas', async () => {
+    const file = csvFile('t.csv', 'CLIENTE\nOlimpica\n')
+    await useAppStore.getState().openFile(file)
+    await useAppStore.getState().confirmImport()
+    await useAppStore.getState().addManualRecord({ client: 'Toks' })
+
+    const excelBatch = useAppStore.getState().batches.find((batch) => batch.source === 'excel')
+    if (!excelBatch) throw new Error('se esperaba un lote de excel')
+
+    await useAppStore.getState().deleteBatch(excelBatch.id)
+
+    const { records, batches } = useAppStore.getState()
+    expect(batches).toHaveLength(1)
+    expect(records).toHaveLength(1)
+    expect(records[0]?.fields.client).toBe('Toks')
+  })
+
+  it('los lotes sobreviven a la rehidratacion', async () => {
+    await useAppStore.getState().addManualRecord({ client: 'Chedraui' })
+
+    useAppStore.setState({ records: [], batches: [], isHydrated: false })
+    await useAppStore.getState().hydrate()
+
+    expect(useAppStore.getState().batches).toHaveLength(1)
   })
 })

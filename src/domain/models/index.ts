@@ -1,3 +1,4 @@
+export * from './batch'
 export * from './country'
 export * from './fields'
 export * from './geocode'

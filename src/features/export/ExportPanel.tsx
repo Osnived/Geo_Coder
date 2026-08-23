@@ -23,6 +23,7 @@ const SCOPE_LABELS: Record<Scope, string> = {
 
 export function ExportPanel() {
   const records = useAppStore((state) => state.records)
+  const batches = useAppStore((state) => state.batches)
   const [scope, setScope] = useState<Scope>('all')
   const [isWorking, setIsWorking] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -45,8 +46,8 @@ export function ExportPanel() {
   }, [records])
 
   const sheet = useMemo(
-    () => buildExport(selected.length === records.length ? records : selected),
-    [records, selected],
+    () => buildExport(selected.length === records.length ? records : selected, { batches }),
+    [records, selected, batches],
   )
 
   const handleExport = () => {

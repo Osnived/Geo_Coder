@@ -1,6 +1,7 @@
 import Dexie, { type Table } from 'dexie'
 
 import type { Country } from '@/domain/models/country'
+import type { ImportBatch } from '@/domain/models/batch'
 import type { EstablishmentRecord } from '@/domain/models/record'
 
 /**
@@ -33,6 +34,7 @@ export interface GeolocatorDb extends Dexie {
   records: Table<EstablishmentRecord, string>
   settings: Table<SessionSettings, string>
   cache: Table<CacheEntry, string>
+  batches: Table<ImportBatch, string>
 }
 
 export const DB_NAME = 'geolocator'
@@ -56,6 +58,13 @@ export function createDb(name: string = DB_NAME, deps?: IndexedDbDeps): Geolocat
     records: 'id, status, source, createdAt',
     settings: 'id',
     cache: 'key, provider, cachedAt',
+  })
+
+  db.version(3).stores({
+    records: 'id, status, source, createdAt, batchId',
+    settings: 'id',
+    cache: 'key, provider, cachedAt',
+    batches: 'id, createdAt',
   })
 
   return db

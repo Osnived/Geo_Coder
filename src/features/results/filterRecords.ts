@@ -19,6 +19,7 @@ export function filterRecords(
   const needle = canonicalize(filters.text)
 
   return records.filter((record) => {
+    if (filters.batchId !== 'all' && record.batchId !== filters.batchId) return false
     if (filters.source !== 'all' && record.source !== filters.source) return false
     if (filters.status !== 'all' && record.status !== filters.status) return false
     if (!matchesText(record, needle)) return false

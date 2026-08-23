@@ -30,6 +30,8 @@ export interface SheetData {
 export type ColumnAssignment = readonly (NormalizedField | null)[]
 
 export interface NormalizeOptions {
+  /** Lote al que pertenecen los registros creados. */
+  readonly batchId: string
   /** Genera el identificador interno unico de cada registro. */
   readonly newId: () => string
   /** Marca de tiempo ISO para createdAt/updatedAt. */
@@ -110,6 +112,7 @@ export function normalizeSheet(
       createRecord({
         id: options.newId(),
         source: 'excel',
+        batchId: options.batchId,
         fields,
         original,
         origin: {
@@ -139,6 +142,7 @@ export function normalizeManualEntry(
   return createRecord({
     id: options.newId(),
     source: 'manual',
+    batchId: options.batchId,
     fields,
     original: {},
     origin: null,

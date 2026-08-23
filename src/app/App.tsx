@@ -15,8 +15,11 @@ import { cx } from '@/shared/cx'
 const ReviewPanel = lazy(() =>
   import('@/features/review/ReviewPanel').then((module) => ({ default: module.ReviewPanel })),
 )
+const GlobalMapPanel = lazy(() =>
+  import('@/features/map/GlobalMapPanel').then((module) => ({ default: module.GlobalMapPanel })),
+)
 
-type Tab = 'import' | 'manual' | 'records' | 'search' | 'review' | 'export' | 'settings'
+type Tab = 'import' | 'manual' | 'records' | 'search' | 'review' | 'mapa' | 'export' | 'settings'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'import', label: 'Importar Excel' },
@@ -24,9 +27,14 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'records', label: 'Registros' },
   { id: 'search', label: 'Busqueda' },
   { id: 'review', label: 'Revision' },
+  { id: 'mapa', label: 'Mapa' },
   { id: 'export', label: 'Exportar' },
   { id: 'settings', label: 'Ajustes' },
 ]
+
+function MapLoading() {
+  return <p className="text-ink-muted py-10 text-center text-sm">Cargando mapa...</p>
+}
 
 export function App() {
   const hydrate = useAppStore((state) => state.hydrate)
@@ -94,6 +102,11 @@ export function App() {
                 }
               >
                 <ReviewPanel />
+              </Suspense>
+            ) : null}
+            {tab === 'mapa' ? (
+              <Suspense fallback={<MapLoading />}>
+                <GlobalMapPanel />
               </Suspense>
             ) : null}
             {tab === 'export' ? <ExportPanel /> : null}

@@ -22,6 +22,8 @@ export interface ExcelOrigin {
 export interface EstablishmentRecord {
   readonly id: string
   readonly source: RecordSource
+  /** Lote en el que entro este registro (spec: trazabilidad de origen). */
+  readonly batchId: string
   readonly origin: ExcelOrigin | null
   readonly fields: NormalizedFields
   readonly original: Readonly<Record<string, unknown>>
@@ -39,6 +41,7 @@ export interface EstablishmentRecord {
 export interface CreateRecordInput {
   readonly id: string
   readonly source: RecordSource
+  readonly batchId: string
   readonly fields: Partial<NormalizedFields>
   readonly original?: Readonly<Record<string, unknown>>
   readonly origin?: ExcelOrigin | null
@@ -49,6 +52,7 @@ export function createRecord(input: CreateRecordInput): EstablishmentRecord {
   return {
     id: input.id,
     source: input.source,
+    batchId: input.batchId,
     origin: input.origin ?? null,
     fields: { ...emptyFields(), ...input.fields },
     original: input.original ?? {},

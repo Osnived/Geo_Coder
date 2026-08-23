@@ -1,6 +1,7 @@
 import type { GeocodeResult } from '@/domain/models/geocode'
 import type { EstablishmentRecord } from '@/domain/models/record'
 import { emptyFields } from '@/domain/models/fields'
+import { LEGACY_BATCH_ID } from '@/domain/models/batch'
 
 /**
  * Normalizacion de lo que sale de IndexedDB.
@@ -28,6 +29,9 @@ function migrateResult(result: GeocodeResult | null | undefined): GeocodeResult 
 export function migrateRecord(record: EstablishmentRecord): EstablishmentRecord {
   return {
     ...record,
+    // Los registros guardados antes de que existieran los lotes van al lote
+    // heredado, para que sigan siendo visibles y agrupables.
+    batchId: record.batchId || LEGACY_BATCH_ID,
     fields: { ...emptyFields(), ...record.fields },
     original: record.original ?? {},
     result: migrateResult(record.result),

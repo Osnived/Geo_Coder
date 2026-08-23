@@ -56,6 +56,7 @@ src/
 interface EstablishmentRecord {
   id: string                        // identificador interno único
   source: 'excel' | 'manual'
+  batchId: string                   // lote en el que entró
   origin: ExcelOrigin | null        // archivo, hoja y fila de procedencia
   fields: NormalizedFields          // los 8 campos; '' = sin dato
   original: Record<string, unknown> // fila cruda importada, nunca se modifica
@@ -68,6 +69,10 @@ interface EstablishmentRecord {
 ```
 
 `client`, `business_type` y `location_name` son campos distintos y se mantienen separados. La cadena («Olímpica») no es lo mismo que el nombre de la sucursal («Olímpica Calle 72»).
+
+Un **lote** (`ImportBatch`) es el conjunto de registros que entraron juntos: una importación concreta de una hoja de un archivo, o la entrada manual de un día. Guarda el nombre del archivo, la hoja, cuántos registros entraron y la fecha y hora. Se eligió un lote por día para lo manual porque uno por registro sería ruido y uno por sesión no sobreviviría a una recarga.
+
+Los registros guardados antes de que existieran los lotes se asignan en la migración a un lote heredado («Registros anteriores»), para que sigan siendo visibles y agrupables.
 
 El resultado guarda su propia trazabilidad: `queryUsed`, `provider`, `confidence`, `candidates`, `attempts`, `notes` y `replaced` (el resultado anterior, encadenado).
 
@@ -153,6 +158,10 @@ La capa de IA está apagada de fábrica y solo se invoca en dos puntos concretos
 Se conecta a un modelo **local** por su API compatible con OpenAI. Motivo: la aplicación no tiene backend, y una clave de API en el frontend queda a la vista de cualquiera que abra las herramientas de desarrollo. Para un modelo alojado, lo correcto es apuntar el endpoint a un proxy propio.
 
 Todo lo que devuelve el modelo pasa por un saneado que descarta campos inexistentes, encabezados inventados, duplicados y confianzas fuera de rango.
+
+### El mapa global no vuelve a encuadrar al cambiar la selección
+
+`FitBounds` depende del conjunto de coordenadas, no de cuál está seleccionada. Si dependiera de la selección, el mapa se movería bajo el ratón cada vez que el usuario recorre la lista, que es exactamente lo que no se quiere al comparar puntos.
 
 ### El repositorio es un puerto, no Dexie
 

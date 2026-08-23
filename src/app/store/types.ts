@@ -1,3 +1,4 @@
+import type { ImportBatch } from '@/domain/models/batch'
 import type { Country } from '@/domain/models/country'
 import type { NormalizedField, NormalizedFields } from '@/domain/models/fields'
 import type { EstablishmentRecord, RecordSource } from '@/domain/models/record'
@@ -47,10 +48,14 @@ export interface RecordFilters {
   readonly source: RecordSource | 'all'
   readonly status: RecordStatus | 'all'
   readonly onlyWithIssues: boolean
+  /** Id de lote, o 'all' para no filtrar. */
+  readonly batchId: string
 }
 
 export interface RecordsSlice {
   records: readonly EstablishmentRecord[]
+  /** Lotes conocidos, del mas antiguo al mas reciente. */
+  batches: readonly ImportBatch[]
   isHydrated: boolean
   filters: RecordFilters
 
@@ -60,6 +65,8 @@ export interface RecordsSlice {
   updateRecord: (id: string, changes: Partial<NormalizedFields>) => Promise<void>
   duplicateRecord: (id: string) => Promise<void>
   deleteRecords: (ids: readonly string[]) => Promise<void>
+  /** Borra un lote entero con todos sus registros. */
+  deleteBatch: (batchId: string) => Promise<void>
   clearRecords: () => Promise<void>
 }
 

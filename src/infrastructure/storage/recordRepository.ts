@@ -1,3 +1,4 @@
+import type { ImportBatch } from '@/domain/models/batch'
 import type { Country } from '@/domain/models/country'
 import type { EstablishmentRecord } from '@/domain/models/record'
 
@@ -14,6 +15,9 @@ export interface RecordRepository {
   save(record: EstablishmentRecord): Promise<void>
   remove(ids: readonly string[]): Promise<void>
   clear(): Promise<void>
+  loadBatches(): Promise<ImportBatch[]>
+  saveBatch(batch: ImportBatch): Promise<void>
+  removeBatches(ids: readonly string[]): Promise<void>
   loadSettings(): Promise<SessionSettings | null>
   saveSettings(settings: {
     country: Country | null
@@ -47,6 +51,20 @@ export function createRecordRepository(db: GeolocatorDb = createDb()): RecordRep
 
     async clear() {
       await db.records.clear()
+      await db.batches.clear()
+    },
+
+    async loadBatches() {
+      return db.batches.orderBy('createdAt').toArray()
+    },
+
+    async saveBatch(batch) {
+      await db.batches.put(batch)
+    },
+
+    async removeBatches(ids) {
+      if (ids.length === 0) return
+      await db.batches.bulkDelete([...ids])
     },
 
     async loadSettings() {
@@ -66,6 +84,7 @@ export function createRecordRepository(db: GeolocatorDb = createDb()): RecordRep
  */
 export function createInMemoryRepository(): RecordRepository {
   const records = new Map<string, EstablishmentRecord>()
+  const batches = new Map<string, ImportBatch>()
   let settings: SessionSettings | null = null
 
   return {
@@ -89,6 +108,16 @@ export function createInMemoryRepository(): RecordRepository {
     },
     clear: () => {
       records.clear()
+      return Promise.resolve()
+    },
+    loadBatches: () =>
+      Promise.resolve([...batches.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt))),
+    saveBatch: (batch) => {
+      batches.set(batch.id, batch)
+      return Promise.resolve()
+    },
+    removeBatches: (ids) => {
+      for (const id of ids) batches.delete(id)
       return Promise.resolve()
     },
     loadSettings: () => Promise.resolve(settings),

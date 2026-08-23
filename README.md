@@ -41,7 +41,7 @@ Abre `http://localhost:5173`.
 
 ## Cómo se usa
 
-La aplicación son seis pestañas que siguen el flujo de trabajo.
+La aplicación son siete pestañas que siguen el flujo de trabajo.
 
 ### 1. Importar Excel
 
@@ -53,7 +53,11 @@ Crea registros a mano. Producen exactamente el mismo modelo que los importados y
 
 ### 3. Registros
 
-Tabla unificada con filtros por texto, origen y estado. Edición en línea, duplicado y borrado. Cada registro muestra sus problemas de validación sin que nada se descarte.
+Tabla unificada con filtros por texto, **lote**, origen y estado. Edición en línea, duplicado y borrado. Cada registro muestra sus problemas de validación sin que nada se descarte.
+
+Arriba aparece la lista de **lotes**: cada importación de una hoja es un lote propio, con el nombre del archivo, la hoja y la fecha y hora exactas. Los registros manuales se agrupan en un lote por día. Pinchando un lote se filtra la tabla; también se puede borrar un lote entero con todos sus registros.
+
+Cada registro guarda además su propia fecha de creación y de última modificación, visibles en la tabla y presentes en la exportación.
 
 ### 4. Búsqueda
 
@@ -63,9 +67,13 @@ Muestra **exactamente** qué se va a consultar, registro por registro, antes de 
 
 Cola de los registros que necesitan una decisión humana. Para cada uno: datos originales, consulta usada, resultado, desglose del score, candidatos alternativos y un mapa. Puedes aceptar, rechazar, elegir otro candidato o marcar el punto a mano.
 
-### 6. Exportar
+### 6. Mapa
 
-Genera un `.xlsx` que **conserva todas las columnas del archivo original** y añade los campos normalizados y las columnas de resultado.
+Todos los registros localizados en un solo mapa. La lista de la izquierda y el mapa son la misma selección: eliges en la lista y se resalta el punto, o pinchas el punto y se resalta la fila. Se puede filtrar por lote, por verificados manualmente y por texto. El mapa se encuadra solo para que entren todos los puntos.
+
+### 7. Exportar
+
+Genera un `.xlsx` que **conserva todas las columnas del archivo original** y añade los campos normalizados, las columnas de resultado y la trazabilidad: lote de procedencia, fecha del lote, y fecha de creación y modificación de cada registro.
 
 ## Sobre la precisión
 

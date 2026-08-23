@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { makeRecord } from '@/test/factories'
+import { FIXED_NOW, makeRecord } from '@/test/factories'
 
 import type { GeocodeResult } from '../models/geocode'
 import type { EstablishmentRecord } from '../models/record'
@@ -175,5 +175,45 @@ describe('buildExport', () => {
     const sheet = buildExport([])
     expect(sheet.rows).toEqual([])
     expect(sheet.headers).toContain('latitude')
+  })
+})
+
+describe('lote y fechas en la exportacion', () => {
+  const BATCH = {
+    id: 'lote-test',
+    label: 'tiendas.xlsx',
+    source: 'excel' as const,
+    sheetName: 'Hoja1',
+    importedCount: 2,
+    createdAt: '2026-03-01T10:00:00.000Z',
+  }
+
+  it('anade las columnas de lote y de fecha', () => {
+    const sheet = buildExport([imported({ CLIENTE: 'Olimpica' })], { batches: [BATCH] })
+
+    for (const column of ['batch', 'batch_created_at', 'created_at', 'updated_at']) {
+      expect(sheet.headers, `falta la columna ${column}`).toContain(column)
+    }
+  })
+
+  it('escribe el nombre del lote con su hoja y su fecha', () => {
+    const sheet = buildExport([imported({ CLIENTE: 'Olimpica' })], { batches: [BATCH] })
+    const value = (column: string) => sheet.rows[0]?.[sheet.headers.indexOf(column)]
+
+    expect(value('batch')).toBe('tiendas.xlsx · Hoja1')
+    expect(value('batch_created_at')).toBe('2026-03-01T10:00:00.000Z')
+  })
+
+  it('escribe la fecha de creacion y de modificacion del registro', () => {
+    const sheet = buildExport([imported({ CLIENTE: 'Olimpica' })], { batches: [BATCH] })
+    const value = (column: string) => sheet.rows[0]?.[sheet.headers.indexOf(column)]
+
+    expect(value('created_at')).toBe(FIXED_NOW)
+    expect(value('updated_at')).toBe(FIXED_NOW)
+  })
+
+  it('cae en el id del lote si no se conoce su nombre', () => {
+    const sheet = buildExport([imported({ CLIENTE: 'Olimpica' })])
+    expect(sheet.rows[0]?.[sheet.headers.indexOf('batch')]).toBe('lote-test')
   })
 })

@@ -20,13 +20,20 @@ Los 10 MVP del plan están implementados. Nada se ha subido ni fusionado.
 | 9 | Proveedor secundario / fallback | ✅ |
 | 10 | IA opcional | ✅ (apagada por defecto) |
 
+Añadido después del plan original:
+
+| Extra | Contenido | Estado |
+| --- | --- | --- |
+| Lotes | Agrupación por archivo/hoja o inserción manual, con fecha y hora | ✅ |
+| Mapa global | Todos los registros localizados en un mapa, con selección bidireccional | ✅ |
+
 ## Verificación
 
 | Comprobación | Resultado |
 | --- | --- |
 | `npm run lint` | Sin errores ni avisos |
 | `npm run typecheck` | Sin errores (TS estricto, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`) |
-| `npm test` | 302 tests, todos en verde |
+| `npm test` | 317 tests, todos en verde |
 | `npm run build` | Correcto |
 | `npm audit` | 0 vulnerabilidades |
 
@@ -55,6 +62,8 @@ No solo tests unitarios. Contra el servidor de desarrollo y los servicios reales
 | Photon como respaldo | Resolvió un registro que Nominatim no; proveedor `photon` en el resultado |
 | Tope por ambigüedad | `Toks, Ciudad de Mexico` limitado al 75% con el motivo explicado |
 | IA sin modelo escuchando | Mensaje claro y la aplicación sigue funcionando |
+| Lotes | Cada importación crea su lote con archivo, hoja y hora; los registros previos caen en «Registros anteriores» sin romper nada; el filtro por lote muestra 3 de 6 |
+| Mapa global | 3 marcadores con tiles cargando; elegir en la lista agranda el punto y elegir el punto resalta la fila |
 | Exportación a Excel | Archivo descargado y vuelto a leer: 28 columnas, 3 filas, las 9 originales intactas (con `CIUDAD (2)` desambiguada) y los tres proveedores representados (`manual`, `nominatim`, `photon`) |
 
 ## Casos de la especificación §29

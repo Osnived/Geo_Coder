@@ -1,3 +1,4 @@
+import { describeBatch, type ImportBatch } from '../models/batch'
 import { NORMALIZED_FIELDS, type NormalizedField } from '../models/fields'
 import type { EstablishmentRecord } from '../models/record'
 
@@ -28,7 +29,14 @@ export const RESULT_COLUMNS = [
 ] as const
 
 /** Columnas de trazabilidad del propio sistema. */
-export const META_COLUMNS = ['record_id', 'source'] as const
+export const META_COLUMNS = [
+  'record_id',
+  'source',
+  'batch',
+  'batch_created_at',
+  'created_at',
+  'updated_at',
+] as const
 
 export interface ExportSheet {
   readonly headers: readonly string[]
@@ -38,6 +46,8 @@ export interface ExportSheet {
 export interface ExportOptions {
   /** Exportar solo estos registros. Por defecto, todos. */
   readonly onlyIds?: readonly string[]
+  /** Lotes conocidos, para poder escribir su nombre y su fecha. */
+  readonly batches?: readonly ImportBatch[]
 }
 
 /** Union de las columnas originales, en orden de primera aparicion. */
@@ -110,13 +120,22 @@ export function buildExport(
 
   const headers = [...originalColumns, ...normalizedHeaders, ...resultHeaders, ...metaHeaders]
 
-  const rows = selected.map((record) => [
-    ...originalColumns.map((column) => record.original[column] ?? ''),
-    ...NORMALIZED_FIELDS.map((field: NormalizedField) => record.fields[field]),
-    ...resultValues(record),
-    record.id,
-    record.source,
-  ])
+  const batchById = new Map((options.batches ?? []).map((batch) => [batch.id, batch]))
+
+  const rows = selected.map((record) => {
+    const batch = batchById.get(record.batchId)
+    return [
+      ...originalColumns.map((column) => record.original[column] ?? ''),
+      ...NORMALIZED_FIELDS.map((field: NormalizedField) => record.fields[field]),
+      ...resultValues(record),
+      record.id,
+      record.source,
+      batch ? describeBatch(batch) : record.batchId,
+      batch?.createdAt ?? '',
+      record.createdAt,
+      record.updatedAt,
+    ]
+  })
 
   return { headers, rows }
 }

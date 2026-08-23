@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 
 import type { NormalizedField } from '@/domain/models/fields'
+import { createExcelBatch, createManualBatch, manualBatchId } from '@/domain/models/batch'
 import type { GeocodeQuery } from '@/domain/models/geocode'
 import type { EstablishmentRecord } from '@/domain/models/record'
 import type { RecordStatus } from '@/domain/models/status'
@@ -151,8 +152,29 @@ function selectTargets(
   return records.filter((record) => AUTO_TARGET_STATUSES.includes(record.status))
 }
 
-function normalizeOptions(state: Pick<AppState, 'country'>) {
-  return { newId, now: nowIso, defaultCountry: state.country }
+function normalizeOptions(state: Pick<AppState, 'country'>, batchId: string) {
+  return { batchId, newId, now: nowIso, defaultCountry: state.country }
+}
+
+/**
+ * Devuelve el lote manual del dia, creandolo si hace falta.
+ *
+ * Un lote por dia y no por registro: agrupar de uno en uno seria ruido, y por
+ * sesion no sobreviviria a una recarga.
+ */
+async function ensureManualBatch(
+  get: () => AppState,
+  set: (partial: Partial<AppState>) => void,
+): Promise<string> {
+  const timestamp = nowIso()
+  const id = manualBatchId(timestamp)
+
+  if (get().batches.some((batch) => batch.id === id)) return id
+
+  const batch = createManualBatch(timestamp)
+  await getRepository().saveBatch(batch)
+  set({ batches: [...get().batches, batch] })
+  return id
 }
 
 function describeError(error: unknown): string {
@@ -358,10 +380,28 @@ export const useAppStore = create<AppState>()((set, get) => ({
       const sheet = workbook.readSheet(selectedSheet, {
         headerRowNumber: preview.headerRowNumber,
       })
-      const { records } = normalizeSheet(sheet, state.mapping, normalizeOptions(state))
 
-      await getRepository().addMany(records)
-      set({ records: [...state.records, ...records] })
+      // Cada importacion es un lote propio, aunque se repita el mismo archivo.
+      const batchId = newId()
+      const { records } = normalizeSheet(sheet, state.mapping, normalizeOptions(state, batchId))
+      if (records.length === 0) return 0
+
+      const batch = createExcelBatch({
+        id: batchId,
+        fileName: workbook.fileName,
+        sheetName: selectedSheet,
+        importedCount: records.length,
+        createdAt: nowIso(),
+      })
+
+      const repository = getRepository()
+      await repository.saveBatch(batch)
+      await repository.addMany(records)
+
+      set({
+        records: [...state.records, ...records],
+        batches: [...state.batches, batch],
+      })
       return records.length
     } catch (error) {
       set({ importError: describeError(error) })
@@ -371,14 +411,20 @@ export const useAppStore = create<AppState>()((set, get) => ({
 
   // ----------------------------------------------------------------- records
   records: [],
+  batches: [],
   isHydrated: false,
-  filters: { text: '', source: 'all', status: 'all', onlyWithIssues: false },
+  filters: { text: '', source: 'all', status: 'all', onlyWithIssues: false, batchId: 'all' },
 
   hydrate: async () => {
     const repository = getRepository()
-    const [records, settings] = await Promise.all([repository.loadAll(), repository.loadSettings()])
+    const [records, batches, settings] = await Promise.all([
+      repository.loadAll(),
+      repository.loadBatches(),
+      repository.loadSettings(),
+    ])
     set({
       records,
+      batches,
       isHydrated: true,
       country: settings?.country ?? null,
       requireCountry: settings?.requireCountry ?? true,
@@ -390,8 +436,9 @@ export const useAppStore = create<AppState>()((set, get) => ({
   setFilters: (filters) => set({ filters: { ...get().filters, ...filters } }),
 
   addManualRecord: async (fields) => {
+    const batchId = await ensureManualBatch(get, set)
     const state = get()
-    const record = normalizeManualEntry(fields, normalizeOptions(state))
+    const record = normalizeManualEntry(fields, normalizeOptions(state, batchId))
     await getRepository().save(record)
     set({ records: [...state.records, record] })
     return record.id
@@ -412,7 +459,8 @@ export const useAppStore = create<AppState>()((set, get) => ({
     const existing = state.records.find((record) => record.id === id)
     if (!existing) return
 
-    const copy = duplicateRecordFields(existing, normalizeOptions(state))
+    // La copia se queda en el mismo lote que el original.
+    const copy = duplicateRecordFields(existing, normalizeOptions(state, existing.batchId))
     await getRepository().save(copy)
     // La copia se coloca junto al original para que se vea de inmediato.
     const index = state.records.findIndex((record) => record.id === id)
@@ -428,9 +476,24 @@ export const useAppStore = create<AppState>()((set, get) => ({
     set({ records: get().records.filter((record) => !idSet.has(record.id)) })
   },
 
+  deleteBatch: async (batchId) => {
+    const ids = get()
+      .records.filter((record) => record.batchId === batchId)
+      .map((record) => record.id)
+
+    const repository = getRepository()
+    await repository.remove(ids)
+    await repository.removeBatches([batchId])
+
+    set({
+      records: get().records.filter((record) => record.batchId !== batchId),
+      batches: get().batches.filter((batch) => batch.id !== batchId),
+    })
+  },
+
   clearRecords: async () => {
     await getRepository().clear()
-    set({ records: [] })
+    set({ records: [], batches: [] })
   },
 
   // --------------------------------------------------------------- geocoding

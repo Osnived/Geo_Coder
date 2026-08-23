@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 
 import { useAppStore } from '@/app/store'
 import { Badge, Button, Callout, Panel, Select, TextInput } from '@/components/ui/primitives'
+import { describeBatch, formatTimestamp, LEGACY_BATCH } from '@/domain/models/batch'
 import { FIELD_LABELS, type NormalizedField } from '@/domain/models/fields'
 import type { EstablishmentRecord } from '@/domain/models/record'
 import { RECORD_STATUSES, STATUS_LABELS } from '@/domain/models/status'
@@ -23,6 +24,7 @@ import {
   type ValidationOptions,
 } from '@/domain/rules/validation'
 
+import { BatchList } from './BatchList'
 import { filterRecords } from './filterRecords'
 
 /** Columnas visibles en la tabla, en orden. */
@@ -87,6 +89,8 @@ function EditableRow({
       <td />
       <td />
       <td />
+      <td />
+      <td />
       <td className="px-2 py-1.5">
         <div className="flex gap-1">
           <Button
@@ -116,6 +120,12 @@ export function RecordsTable() {
   const duplicateRecord = useAppStore((state) => state.duplicateRecord)
   const deleteRecords = useAppStore((state) => state.deleteRecords)
   const clearRecords = useAppStore((state) => state.clearRecords)
+  const batches = useAppStore((state) => state.batches)
+
+  const batchLabel = useMemo(() => {
+    const byId = new Map(batches.map((batch) => [batch.id, describeBatch(batch)]))
+    return (batchId: string) => byId.get(batchId) ?? LEGACY_BATCH.label
+  }, [batches])
 
   const [editingId, setEditingId] = useState<string | null>(null)
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set())
@@ -166,6 +176,8 @@ export function RecordsTable() {
       }
     >
       <div className="flex flex-col gap-3">
+        <BatchList />
+
         <div className="flex flex-wrap items-end gap-2">
           <div className="min-w-52 flex-1">
             <TextInput
@@ -176,6 +188,22 @@ export function RecordsTable() {
               }}
             />
           </div>
+
+          <Select
+            aria-label="Filtrar por lote"
+            className="w-56"
+            value={filters.batchId}
+            onChange={(event) => {
+              setFilters({ batchId: event.target.value })
+            }}
+          >
+            <option value="all">Todos los lotes</option>
+            {batches.map((batch) => (
+              <option key={batch.id} value={batch.id}>
+                {describeBatch(batch)} — {formatTimestamp(batch.createdAt)}
+              </option>
+            ))}
+          </Select>
 
           <Select
             aria-label="Filtrar por origen"
@@ -276,6 +304,8 @@ export function RecordsTable() {
                       {FIELD_LABELS[field]}
                     </th>
                   ))}
+                  <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Lote</th>
+                  <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Creado</th>
                   <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Coordenadas</th>
                   <th className="px-2 py-2 text-left font-medium">Estado</th>
                   <th className="px-2 py-2 text-left font-medium">Validacion</th>
@@ -317,6 +347,15 @@ export function RecordsTable() {
                           {record.fields[field] || <span className="text-ink-faint">—</span>}
                         </td>
                       ))}
+                      <td
+                        className="text-ink-muted max-w-40 truncate px-2 py-1.5 text-xs"
+                        title={batchLabel(record.batchId)}
+                      >
+                        {batchLabel(record.batchId)}
+                      </td>
+                      <td className="text-ink-muted px-2 py-1.5 text-xs whitespace-nowrap">
+                        {formatTimestamp(record.createdAt)}
+                      </td>
                       <td className="px-2 py-1.5 text-xs whitespace-nowrap tabular-nums">
                         {record.result ? (
                           <span title={record.result.matchedAddress}>
