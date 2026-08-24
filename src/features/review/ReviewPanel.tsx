@@ -7,6 +7,8 @@ import type { EstablishmentRecord } from '@/domain/models/record'
 import { STATUS_LABELS } from '@/domain/models/status'
 import { needsReview, resultHistory } from '@/domain/services/reviewService'
 import { LocationMap, type MapPoint } from '@/features/map/LocationMap'
+
+import { buildReviewQueue, findNextPending } from './reviewQueue'
 import { ScoreBreakdown } from '@/features/results/ScoreBreakdown'
 import { cx } from '@/shared/cx'
 
@@ -59,14 +61,14 @@ export function ReviewPanel() {
   const [pickMode, setPickMode] = useState(false)
 
   const queue = useMemo(
-    () =>
-      onlyPending
-        ? records.filter(needsReview)
-        : records.filter((r) => r.result !== null || needsReview(r)),
-    [records, onlyPending],
+    () => buildReviewQueue(records, { onlyPending, selectedId }),
+    [records, onlyPending, selectedId],
   )
 
-  // Si el registro seleccionado sale de la cola, se pasa al siguiente.
+  const nextPending = useMemo(() => findNextPending(records, selectedId), [records, selectedId])
+
+  // Al entrar, o si el registro elegido desaparece (se borro, cambio el
+  // filtro), se pasa al primero de la cola.
   useEffect(() => {
     if (selectedId !== null && queue.some((record) => record.id === selectedId)) return
     setSelectedId(queue[0]?.id ?? null)
@@ -183,15 +185,36 @@ export function ReviewPanel() {
                 : 'Sin resultado todavia.'
             }
             actions={
-              <Button
-                disabled={geocoding.isRunning}
-                onClick={() => void runGeocoding([selected.id])}
-              >
-                Buscar de nuevo
-              </Button>
+              <>
+                <Button
+                  disabled={geocoding.isRunning}
+                  onClick={() => void runGeocoding([selected.id])}
+                >
+                  Buscar de nuevo
+                </Button>
+                {nextPending ? (
+                  <Button
+                    variant="primary"
+                    onClick={() => {
+                      setSelectedId(nextPending.id)
+                      setPickMode(false)
+                    }}
+                    title={displayName(nextPending)}
+                  >
+                    Siguiente pendiente
+                  </Button>
+                ) : null}
+              </>
             }
           >
             <div className="flex flex-col gap-3">
+              {!needsReview(selected) && selected.result ? (
+                <Callout tone="accent">
+                  Este registro ya esta resuelto. Sigue aqui para que puedas comprobarlo o
+                  cambiarlo; pasa al siguiente cuando quieras.
+                </Callout>
+              ) : null}
+
               {selected.result ? (
                 <>
                   <div className="text-xs">
