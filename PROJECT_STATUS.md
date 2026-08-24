@@ -68,6 +68,7 @@ No solo tests unitarios. Contra el servidor de desarrollo y los servicios reales
 | IA sin modelo escuchando | Mensaje claro y la aplicación sigue funcionando |
 | Lotes | Cada importación crea su lote con archivo, hoja y hora; los registros previos caen en «Registros anteriores» sin romper nada; el filtro por lote muestra 3 de 6 |
 | Mapa global | 3 marcadores con tiles cargando; elegir en la lista agranda el punto y elegir el punto resalta la fila |
+| Previsualizar candidato | Tocar la ficha vuela el mapa (zoom 15 a 17) y resalta la chincheta sin cambiar coordenadas ni estado del registro; pinchar la chincheta marca su ficha; «Volver al actual» deshace |
 | Elegir candidato | El candidato pasa a «actual», cambian las coordenadas, el registro sigue visible y el historial acumula los sustituidos; rectificar y «Siguiente pendiente» verificados |
 | Barra lateral | Visible siempre en escritorio; en 375 px se pliega, el boton muestra la seccion actual, el fondo cierra y navegar tambien |
 | Sin scroll de pagina | Ninguna de las ocho vistas desborda la pagina; en Registros la tabla se desplaza por dentro (405 de 707 px) y en Busqueda la lista (395 de 682 px) |
@@ -102,8 +103,9 @@ Vale la pena dejarlos escritos porque explican decisiones del código:
 5. **El botón prometía más registros de los que creaba** cuando el Excel tenía filas en blanco. Ahora cuenta las filas que realmente generan registro.
 6. **Los `NOT_FOUND` se reintentaban en cada ejecución**, gastando peticiones para obtener el mismo vacío. Ahora es una acción explícita.
 7. **Un Toks equivocado puntuaba 100%.** Se añadieron los topes de confianza por poca especificidad y por ambigüedad.
-8. **Elegir un candidato parecía no hacer nada.** El registro pasaba a verificado, dejaba de cumplir el filtro de la cola y desaparecía en el acto. Ahora el seleccionado permanece a la vista y se avanza con «Siguiente pendiente».
-9. **`map.flyTo` no movía el mapa** cuando la pestaña no está pintando: su animación depende de `requestAnimationFrame`, que el navegador pausa. Se añadió una comprobación posterior que coloca el mapa sin animación si el vuelo no llegó.
+8. **No se podía ver un candidato antes de elegirlo.** La única acción era «Usar este», una decisión irreversible a ciegas. Ahora tocar la ficha lo enseña en el mapa sin tocar el registro.
+9. **Elegir un candidato parecía no hacer nada.** El registro pasaba a verificado, dejaba de cumplir el filtro de la cola y desaparecía en el acto. Ahora el seleccionado permanece a la vista y se avanza con «Siguiente pendiente».
+10. **`map.flyTo` no movía el mapa** cuando la pestaña no está pintando: su animación depende de `requestAnimationFrame`, que el navegador pausa. Se añadió una comprobación posterior que coloca el mapa sin animación si el vuelo no llegó.
 
 ## Deuda y puntos abiertos
 

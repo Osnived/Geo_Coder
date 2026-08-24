@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useAppStore } from '@/app/store'
 import { Badge, Button, Callout, Panel } from '@/components/ui/primitives'
 import { FIELD_LABELS, NORMALIZED_FIELDS } from '@/domain/models/fields'
+import type { GeocodeCandidate } from '@/domain/models/geocode'
 import type { EstablishmentRecord } from '@/domain/models/record'
 import { STATUS_LABELS } from '@/domain/models/status'
 import { needsReview, resultHistory } from '@/domain/services/reviewService'
-import { LocationMap, type MapPoint } from '@/features/map/LocationMap'
+import { LocationMap, type FlyTarget, type MapPoint } from '@/features/map/LocationMap'
 
 import { buildReviewQueue, findNextPending } from './reviewQueue'
 import { ScoreBreakdown } from '@/features/results/ScoreBreakdown'
@@ -59,6 +60,13 @@ export function ReviewPanel() {
   const [onlyPending, setOnlyPending] = useState(true)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [pickMode, setPickMode] = useState(false)
+  /**
+   * Candidato que se esta mirando, sin haberlo elegido todavia. `null` es
+   * "estoy mirando el resultado actual".
+   */
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null)
+  const [flyTo, setFlyTo] = useState<FlyTarget | null>(null)
+  const flightNumber = useRef(0)
 
   const queue = useMemo(
     () => buildReviewQueue(records, { onlyPending, selectedId }),
@@ -76,31 +84,79 @@ export function ReviewPanel() {
 
   const selected = queue.find((record) => record.id === selectedId) ?? null
 
-  const points: MapPoint[] = useMemo(() => {
-    if (!selected?.result) return []
-    const chosen: MapPoint = {
-      id: 'result',
-      latitude: selected.result.latitude,
-      longitude: selected.result.longitude,
-      label: selected.result.matchedName || 'Resultado actual',
-      selected: true,
-    }
-    const others = selected.result.candidates
-      .map((candidate, index): MapPoint => {
-        return {
-          id: `candidate-${String(index)}`,
-          latitude: candidate.latitude,
-          longitude: candidate.longitude,
-          label: candidate.matchedName,
-          selected: false,
-        }
-      })
-      .filter((point) => point.latitude !== chosen.latitude || point.longitude !== chosen.longitude)
-    return [chosen, ...others]
-  }, [selected])
+  const result = selected?.result ?? null
 
-  const center = selected?.result
-    ? { latitude: selected.result.latitude, longitude: selected.result.longitude }
+  /** True si ese candidato es el que esta puesto ahora mismo en el registro. */
+  const isChosen = (candidate: GeocodeCandidate): boolean =>
+    result !== null &&
+    candidate.latitude === result.latitude &&
+    candidate.longitude === result.longitude
+
+  /**
+   * Todos los candidatos van al mapa, numerados igual que en la lista, para
+   * poder emparejar cada ficha con su chincheta. El resaltado marca el que se
+   * esta mirando: el previsualizado, o el actual si no hay ninguno.
+   */
+  const points: MapPoint[] = useMemo(() => {
+    if (!result) return []
+
+    const fromCandidates = result.candidates.map((candidate, index): MapPoint => {
+      const label = `${String(index + 1)}. ${candidate.matchedName || '(sin nombre)'}`
+      return {
+        id: `candidate-${String(index)}`,
+        latitude: candidate.latitude,
+        longitude: candidate.longitude,
+        label: isChosen(candidate) ? `${label} — actual` : label,
+        detail: `${candidate.matchedAddress} · ${String(Math.round(candidate.confidence * 100))}%`,
+        selected: previewIndex === null ? isChosen(candidate) : previewIndex === index,
+      }
+    })
+
+    // Si el punto del registro no esta entre los candidatos (correccion manual
+    // o candidatos de otra busqueda), se dibuja aparte para no perderlo.
+    const covered = fromCandidates.some(
+      (point) => point.latitude === result.latitude && point.longitude === result.longitude,
+    )
+    if (covered) return fromCandidates
+
+    return [
+      {
+        id: 'result',
+        latitude: result.latitude,
+        longitude: result.longitude,
+        label: result.matchedName || 'Resultado actual',
+        detail: result.matchedAddress,
+        selected: previewIndex === null,
+      },
+      ...fromCandidates,
+    ]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result, previewIndex])
+
+  /** Enfoca un candidato en el mapa sin tocar el registro. */
+  const preview = (index: number | null) => {
+    setPreviewIndex(index)
+    const target = index === null ? result : (result?.candidates[index] ?? null)
+    if (!target) return
+
+    flightNumber.current += 1
+    setFlyTo({
+      latitude: target.latitude,
+      longitude: target.longitude,
+      nonce: flightNumber.current,
+    })
+  }
+
+  /** Cambiar de registro descarta la previsualizacion anterior. */
+  useEffect(() => {
+    setPreviewIndex(null)
+    setFlyTo(null)
+  }, [selectedId])
+
+  const previewed = previewIndex === null ? null : (result?.candidates[previewIndex] ?? null)
+
+  const center = result
+    ? { latitude: result.latitude, longitude: result.longitude }
     : FALLBACK_CENTER
 
   if (records.length === 0) {
@@ -284,6 +340,11 @@ export function ReviewPanel() {
               <LocationMap
                 points={points}
                 center={center}
+                flyTo={flyTo}
+                onSelectPoint={(id) => {
+                  const match = /^candidate-(\d+)$/.exec(id)
+                  preview(match?.[1] === undefined ? null : Number(match[1]))
+                }}
                 {...(pickMode
                   ? {
                       onPickPoint: (latitude: number, longitude: number) => {
@@ -296,37 +357,69 @@ export function ReviewPanel() {
             </div>
           </Panel>
 
-          {selected.result && selected.result.candidates.length > 1 ? (
+          {result && result.candidates.length > 1 ? (
             <Panel
-              title={`Candidatos (${String(selected.result.candidates.length)})`}
-              description="Alternativas que devolvio el proveedor, ordenadas por confianza."
+              title={`Candidatos (${String(result.candidates.length)})`}
+              description="Toca uno para verlo en el mapa. Solo cambia el registro si pulsas 'Usar este'."
+              actions={
+                previewIndex !== null ? (
+                  <Button
+                    onClick={() => {
+                      preview(null)
+                    }}
+                  >
+                    Volver al actual
+                  </Button>
+                ) : undefined
+              }
             >
               <ul className="flex flex-col gap-2">
-                {selected.result.candidates.map((candidate, index) => {
-                  const isCurrent =
-                    candidate.latitude === selected.result?.latitude &&
-                    candidate.longitude === selected.result.longitude
+                {result.candidates.map((candidate, index) => {
+                  const chosen = isChosen(candidate)
+                  const previewing = previewIndex === index
 
                   return (
                     <li
                       key={`${String(candidate.latitude)}-${String(candidate.longitude)}-${String(index)}`}
                       className={cx(
-                        'border-border-subtle flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2',
-                        isCurrent && 'bg-accent-soft/40',
+                        'border-border-subtle flex flex-wrap items-center gap-2 rounded-md border px-2 py-2',
+                        chosen && 'bg-accent-soft/40',
+                        previewing && 'border-accent ring-accent/40 ring-2',
                       )}
                     >
-                      <div className="min-w-0 text-xs">
-                        <p className="font-medium">{candidate.matchedName || '(sin nombre)'}</p>
+                      {/* La ficha entera previsualiza; usarlo es un boton aparte. */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          preview(index)
+                        }}
+                        aria-pressed={previewing}
+                        className="hover:bg-surface-sunken min-w-0 flex-1 rounded px-1 py-0.5 text-left text-xs"
+                        title="Ver este candidato en el mapa"
+                      >
+                        <p className="flex flex-wrap items-center gap-1.5 font-medium">
+                          <span className="text-ink-faint tabular-nums">{index + 1}.</span>
+                          {candidate.matchedName || '(sin nombre)'}
+                          {chosen ? <Badge tone="accent">actual</Badge> : null}
+                          {previewing ? <Badge tone="neutral">viendo</Badge> : null}
+                        </p>
                         <p className="text-ink-muted truncate">{candidate.matchedAddress}</p>
                         <p className="text-ink-faint tabular-nums">
                           {candidate.latitude.toFixed(5)}, {candidate.longitude.toFixed(5)} ·{' '}
                           {Math.round(candidate.confidence * 100)}%
                         </p>
-                      </div>
-                      {isCurrent ? (
-                        <Badge tone="accent">actual</Badge>
-                      ) : (
-                        <Button onClick={() => void chooseCandidate(selected.id, index)}>
+                      </button>
+
+                      {chosen ? null : (
+                        <Button
+                          variant={previewing ? 'primary' : 'secondary'}
+                          onClick={() => {
+                            // Al elegirlo pasa a ser el actual: ya no se esta
+                            // "previsualizando" nada.
+                            setPreviewIndex(null)
+                            void chooseCandidate(selected.id, index)
+                          }}
+                        >
                           Usar este
                         </Button>
                       )}
@@ -334,6 +427,16 @@ export function ReviewPanel() {
                   )
                 })}
               </ul>
+
+              {previewed ? (
+                <div className="mt-3">
+                  <Callout tone="accent">
+                    Estas viendo <strong>{previewed.matchedName || '(sin nombre)'}</strong> en el
+                    mapa. El registro sigue apuntando al actual hasta que pulses &quot;Usar
+                    este&quot;.
+                  </Callout>
+                </div>
+              ) : null}
             </Panel>
           ) : null}
 
