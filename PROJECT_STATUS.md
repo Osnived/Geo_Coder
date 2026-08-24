@@ -25,6 +25,8 @@ Añadido después del plan original:
 | Extra | Contenido | Estado |
 | --- | --- | --- |
 | Lotes | Agrupación por archivo/hoja o inserción manual, con fecha y hora | ✅ |
+| Navegacion lateral | Barra lateral agrupada por etapa, con contadores y selector de pais; plegable en pantallas estrechas | ✅ |
+| Vistas sin scroll de pagina | Registros y Busqueda ocupan la pantalla y se desplazan por dentro | ✅ |
 | Plantilla de carga | Excel de ejemplo descargable desde la aplicación, con instrucciones | ✅ |
 | Tablas anchas | Scroll horizontal arriba sincronizado y scroll vertical interno con cabecera fija | ✅ |
 | Mapa global | Todos los registros localizados en un mapa, con selección bidireccional y vuelo con zoom al tocar una tarjeta | ✅ |
@@ -66,6 +68,8 @@ No solo tests unitarios. Contra el servidor de desarrollo y los servicios reales
 | IA sin modelo escuchando | Mensaje claro y la aplicación sigue funcionando |
 | Lotes | Cada importación crea su lote con archivo, hoja y hora; los registros previos caen en «Registros anteriores» sin romper nada; el filtro por lote muestra 3 de 6 |
 | Mapa global | 3 marcadores con tiles cargando; elegir en la lista agranda el punto y elegir el punto resalta la fila |
+| Barra lateral | Visible siempre en escritorio; en 375 px se pliega, el boton muestra la seccion actual, el fondo cierra y navegar tambien |
+| Sin scroll de pagina | Ninguna de las ocho vistas desborda la pagina; en Registros la tabla se desplaza por dentro (405 de 707 px) y en Busqueda la lista (395 de 682 px) |
 | Plantilla | Descargada desde la aplicación y vuelta a leer: 2 hojas, 8 encabezados, 3 filas de ejemplo, 20 filas de instrucciones; los 8 encabezados se auto-mapean con coincidencia exacta |
 | Scroll de tablas | Barra superior aparece solo al desbordar y reacciona al redimensionar; sincronización en ambos sentidos (500↔500, 120↔120); el scroll vertical no mueve la página y la cabecera queda pegada arriba |
 | Vuelo al tocar una tarjeta | De zoom 5 a zoom 17 centrado en las coordenadas exactas del registro, en los dos registros probados; «Ver todos» vuelve a zoom 5; pinchar un marcador resalta la fila sin mover el mapa |

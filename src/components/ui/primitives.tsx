@@ -117,14 +117,26 @@ export function Panel({
   description,
   actions,
   children,
+  fill = false,
 }: {
   title: string
   description?: string | undefined
   actions?: ReactNode
   children: ReactNode
+  /**
+   * Ocupa todo el alto disponible en lugar de crecer con su contenido. El
+   * cuerpo se encarga entonces de su propio desplazamiento, de modo que la
+   * pagina no crezca.
+   */
+  fill?: boolean
 }) {
   return (
-    <section className="border-border-subtle bg-surface rounded-lg border">
+    <section
+      className={cx(
+        'border-border-subtle bg-surface rounded-lg border',
+        fill && 'flex h-full min-h-0 flex-col',
+      )}
+    >
       <header className="border-border-subtle flex flex-wrap items-start justify-between gap-3 border-b px-4 py-3">
         <div>
           <h2 className="text-sm font-semibold">{title}</h2>
@@ -132,7 +144,7 @@ export function Panel({
         </div>
         {actions ? <div className="flex items-center gap-2">{actions}</div> : null}
       </header>
-      <div className="p-4">{children}</div>
+      <div className={cx('p-4', fill && 'flex min-h-0 flex-1 flex-col')}>{children}</div>
     </section>
   )
 }

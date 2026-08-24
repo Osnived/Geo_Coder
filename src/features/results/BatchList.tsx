@@ -42,26 +42,22 @@ export function BatchList() {
 
   const selected = filters.batchId
 
-  return (
-    <div className="flex flex-col gap-1.5">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-ink-muted text-xs font-medium tracking-wide uppercase">
-          Lotes ({rows.length})
-        </span>
-        {selected !== 'all' ? (
-          <button
-            type="button"
-            className="text-accent text-xs underline underline-offset-2"
-            onClick={() => {
-              setFilters({ batchId: 'all' })
-            }}
-          >
-            Ver todos
-          </button>
-        ) : null}
-      </div>
+  const activeLabel =
+    selected === 'all' ? null : (rows.find((row) => row.batch.id === selected)?.batch.label ?? null)
 
-      <ul className="flex flex-col gap-1">
+  return (
+    // Plegado por defecto: la tabla es lo importante, y el filtro por lote
+    // tambien esta en el desplegable de arriba.
+    <details className="shrink-0">
+      <summary className="text-ink-muted flex cursor-pointer flex-wrap items-center gap-2 text-xs font-medium tracking-wide uppercase">
+        Lotes ({rows.length})
+        {activeLabel ? (
+          <span className="text-accent normal-case">· filtrando por {activeLabel}</span>
+        ) : null}
+      </summary>
+
+      {/* Acotado: con muchos lotes, la tabla seguiria siendo lo importante. */}
+      <ul className="mt-1.5 flex max-h-28 flex-col gap-1 overflow-y-auto">
         {rows.map(({ batch, current }) => (
           <li
             key={batch.id}
@@ -103,6 +99,18 @@ export function BatchList() {
           </li>
         ))}
       </ul>
-    </div>
+
+      {selected !== 'all' ? (
+        <button
+          type="button"
+          className="text-accent mt-1 text-xs underline underline-offset-2"
+          onClick={() => {
+            setFilters({ batchId: 'all' })
+          }}
+        >
+          Ver todos los lotes
+        </button>
+      ) : null}
+    </details>
   )
 }

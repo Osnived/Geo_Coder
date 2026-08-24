@@ -161,6 +161,7 @@ export function RecordsTable() {
 
   return (
     <Panel
+      fill
       title={`Registros normalizados (${String(records.length)})`}
       description="Excel y entrada manual comparten el mismo modelo. Los datos originales se conservan intactos."
       actions={
@@ -177,11 +178,11 @@ export function RecordsTable() {
         ) : undefined
       }
     >
-      <div className="flex flex-col gap-3">
+      <div className="flex min-h-0 flex-1 flex-col gap-3">
         <BatchList />
 
-        <div className="flex flex-wrap items-end gap-2">
-          <div className="min-w-52 flex-1">
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <div className="min-w-40 flex-1">
             <TextInput
               placeholder="Buscar en cualquier campo..."
               value={filters.text}
@@ -193,7 +194,7 @@ export function RecordsTable() {
 
           <Select
             aria-label="Filtrar por lote"
-            className="w-56"
+            className="min-w-0 max-w-56 flex-1"
             value={filters.batchId}
             onChange={(event) => {
               setFilters({ batchId: event.target.value })
@@ -209,7 +210,7 @@ export function RecordsTable() {
 
           <Select
             aria-label="Filtrar por origen"
-            className="w-40"
+            className="min-w-0 max-w-36 flex-1"
             value={filters.source}
             onChange={(event) => {
               setFilters({ source: event.target.value as typeof filters.source })
@@ -222,7 +223,7 @@ export function RecordsTable() {
 
           <Select
             aria-label="Filtrar por estado"
-            className="w-48"
+            className="min-w-0 max-w-44 flex-1"
             value={filters.status}
             onChange={(event) => {
               setFilters({ status: event.target.value as typeof filters.status })
@@ -236,7 +237,7 @@ export function RecordsTable() {
             ))}
           </Select>
 
-          <label className="text-ink-muted flex items-center gap-1.5 text-sm">
+          <label className="text-ink-muted flex shrink-0 items-center gap-1.5 text-sm whitespace-nowrap">
             <input
               type="checkbox"
               checked={filters.onlyWithIssues}
@@ -283,7 +284,7 @@ export function RecordsTable() {
             Todavia no hay registros. Importa un Excel o crea uno manualmente.
           </div>
         ) : (
-          <ScrollableTable>
+          <ScrollableTable fill>
             <table className="w-full border-collapse text-sm">
               <thead>
                 <tr className="text-ink-muted text-xs [&>th]:bg-surface-sunken [&>th]:sticky [&>th]:top-0 [&>th]:z-10">
@@ -422,7 +423,7 @@ export function RecordsTable() {
         ) : null}
 
         {records.length > 0 ? (
-          <p className="text-ink-faint text-xs">
+          <p className="text-ink-faint shrink-0 text-xs">
             Mostrando {visible.length} de {records.length}. Origen:{' '}
             {records.filter((record) => record.source === 'excel').length} importados,{' '}
             {records.filter((record) => record.source === 'manual').length} manuales.

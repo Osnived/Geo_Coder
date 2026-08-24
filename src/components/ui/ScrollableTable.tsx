@@ -16,8 +16,13 @@ import { cx } from '@/shared/cx'
 
 export interface ScrollableTableProps {
   children: ReactNode
-  /** Alto maximo del area de filas. */
+  /** Alto maximo del area de filas. Se ignora si `fill` esta activo. */
   maxHeightClass?: string
+  /**
+   * Ocupa el alto que le deje su contenedor en lugar de un maximo fijo. Se usa
+   * en las vistas que llenan la pantalla y no deben hacer crecer la pagina.
+   */
+  fill?: boolean
 }
 
 /**
@@ -35,6 +40,7 @@ function mirrorScroll(from: HTMLElement | null, to: HTMLElement | null): void {
 export function ScrollableTable({
   children,
   maxHeightClass = 'max-h-[65vh]',
+  fill = false,
 }: ScrollableTableProps) {
   const topBar = useRef<HTMLDivElement>(null)
   const body = useRef<HTMLDivElement>(null)
@@ -85,14 +91,19 @@ export function ScrollableTable({
   const hasOverflow = contentWidth > visibleWidth + 1
 
   return (
-    <div className="border-border-subtle overflow-hidden rounded-md border">
+    <div
+      className={cx(
+        'border-border-subtle overflow-hidden rounded-md border',
+        fill && 'flex min-h-0 flex-1 flex-col',
+      )}
+    >
       {hasOverflow ? (
         <div
           ref={topBar}
           onScroll={onTopScroll}
           // `overflow-x: scroll` y no `auto`: la barra debe verse siempre que
           // haya desbordamiento, no solo al pasar el raton.
-          className="border-border-subtle overflow-x-scroll overflow-y-hidden border-b"
+          className="border-border-subtle shrink-0 overflow-x-scroll overflow-y-hidden border-b"
           aria-hidden="true"
         >
           <div style={{ width: contentWidth, height: 1 }} />
@@ -102,7 +113,7 @@ export function ScrollableTable({
       <div
         ref={body}
         onScroll={onBodyScroll}
-        className={cx('overflow-auto', maxHeightClass)}
+        className={cx('overflow-auto', fill ? 'min-h-0 flex-1' : maxHeightClass)}
         // La tabla es una region desplazable: debe poder recorrerse con teclado.
         tabIndex={0}
       >

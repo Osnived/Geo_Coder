@@ -61,6 +61,7 @@ export function SearchPanel() {
 
   return (
     <Panel
+      fill
       title="Plan de busqueda"
       description="Esto es exactamente lo que se enviara al proveedor, en orden."
       actions={
@@ -89,7 +90,7 @@ export function SearchPanel() {
         )
       }
     >
-      <div className="flex flex-col gap-3">
+      <div className="flex min-h-0 flex-1 flex-col gap-3">
         <Callout tone="accent">
           Se usa Nominatim (OpenStreetMap), que admite <strong>1 consulta por segundo</strong>. Los{' '}
           {pending.length} registro(s) pendientes tardaran del orden de{' '}
@@ -108,7 +109,7 @@ export function SearchPanel() {
           <Callout tone="danger">Ultimo error del proveedor: {geocoding.lastError}</Callout>
         ) : null}
 
-        <label className="flex items-start gap-2 text-sm">
+        <label className="flex shrink-0 items-start gap-2 text-sm">
           <input
             type="checkbox"
             className="mt-0.5"
@@ -126,7 +127,7 @@ export function SearchPanel() {
           </span>
         </label>
 
-        <div className="text-ink-faint flex flex-wrap items-center gap-2 text-xs">
+        <div className="text-ink-faint flex shrink-0 flex-wrap items-center gap-2 text-xs">
           <span>
             Cache: {cacheStats.hits} acierto(s), {cacheStats.misses} consulta(s) reales
           </span>
@@ -147,7 +148,7 @@ export function SearchPanel() {
         </div>
 
         {geocoding.isRunning || geocoding.processed > 0 ? (
-          <div className="border-border-subtle bg-surface-muted rounded-md border px-3 py-2">
+          <div className="border-border-subtle bg-surface-muted shrink-0 rounded-md border px-3 py-2">
             <div className="flex items-center justify-between text-sm">
               <span>
                 {geocoding.processed} de {geocoding.total} procesado(s)
@@ -171,11 +172,12 @@ export function SearchPanel() {
           </div>
         ) : null}
 
-        <div className="flex flex-col gap-2">
+        {/* Unico bloque que crece: se desplaza por dentro, no la pagina. */}
+        <div className="-mx-1 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-1">
           {plan.map(({ record, queries }) => (
             <details
               key={record.id}
-              className="border-border-subtle rounded-md border px-3 py-2"
+              className="border-border-subtle shrink-0 rounded-md border px-3 py-2"
               open={records.length <= 10}
             >
               <summary className="flex cursor-pointer flex-wrap items-center gap-2 text-sm font-medium">
