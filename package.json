@@ -11,6 +11,7 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\" \"*.{json,md}\"",
+    "template": "vite-node scripts/generate-template.ts",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\" \"*.{json,md}\"",
     "test": "vitest run",
     "test:watch": "vitest",

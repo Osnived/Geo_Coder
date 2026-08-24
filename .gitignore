@@ -35,7 +35,7 @@ coverage/
 *.tsbuildinfo
 
 # Datos de prueba locales (no versionar Excel reales de clientes)
-/samples/private/
+/public/samples/private/
 
 # Claude Code local settings
 .claude/settings.local.json

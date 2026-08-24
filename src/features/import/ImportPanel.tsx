@@ -8,6 +8,7 @@ import { ColumnMapper } from '@/features/column-mapping/ColumnMapper'
 import type { SheetPreview } from '@/infrastructure/excel'
 
 import { FileDropzone } from './FileDropzone'
+import { TemplateButton } from './TemplateButton'
 import { PreviewTable } from './PreviewTable'
 
 function previewDescription(preview: SheetPreview): string {
@@ -56,17 +57,20 @@ export function ImportPanel() {
         title="1. Archivo"
         description="Los datos se procesan en tu navegador. Nada se envia a ningun servidor."
         actions={
-          fileName ? (
-            <Button
-              variant="ghost"
-              onClick={() => {
-                clearImport()
-                setLastImported(null)
-              }}
-            >
-              Quitar archivo
-            </Button>
-          ) : undefined
+          <>
+            <TemplateButton />
+            {fileName ? (
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  clearImport()
+                  setLastImported(null)
+                }}
+              >
+                Quitar archivo
+              </Button>
+            ) : null}
+          </>
         }
       >
         {fileName ? (
@@ -88,6 +92,13 @@ export function ImportPanel() {
           <div className="mt-3">
             <Callout tone="danger">{importError}</Callout>
           </div>
+        ) : null}
+
+        {!fileName ? (
+          <p className="text-ink-muted mt-3 text-xs">
+            ¿No sabes como estructurar el archivo? Descarga la plantilla: trae los encabezados que
+            la aplicacion reconoce sola, filas de ejemplo y una hoja con instrucciones.
+          </p>
         ) : null}
 
         {lastImported !== null && lastImported > 0 ? (
