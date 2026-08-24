@@ -36,8 +36,8 @@ export const TAB_GROUPS = TABS.reduce<{ name: string; tabs: TabEntry[] }[]>((gro
  * Son listas largas donde, con scroll de pagina, los filtros y la cabecera se
  * perdian de vista al bajar.
  *
- * Revision y Mapa quedan fuera a proposito: apilan varios paneles de alto
- * variable y, sin desplazamiento de pagina, el contenido de abajo se cortaria
- * sin forma de alcanzarlo.
+ * Revision queda fuera a proposito: apila varios paneles de alto variable y,
+ * sin desplazamiento de pagina, el contenido de abajo se cortaria sin forma de
+ * alcanzarlo.
  */
-export const FULL_HEIGHT_TABS: ReadonlySet<Tab> = new Set<Tab>(['records', 'search'])
+export const FULL_HEIGHT_TABS: ReadonlySet<Tab> = new Set<Tab>(['records', 'search', 'mapa'])

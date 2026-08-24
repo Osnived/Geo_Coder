@@ -82,7 +82,9 @@ Al decidir, **el registro se queda a la vista** para que compruebes el resultado
 
 ### 6. Mapa
 
-Todos los registros localizados en un solo mapa.
+Todos los registros localizados en un solo mapa, que ocupa toda la pantalla junto a la lista.
+
+Con muchos puntos las chinchetas se amontonan, así que **se agrupan por cercanía** mostrando cuántos esconde cada globo. Pinchar un grupo lo abre. Se activa solo a partir de 25 puntos y hay un interruptor **Agrupar** para forzarlo o quitarlo. El punto que tengas seleccionado nunca se esconde dentro de un grupo.
 
 - **Tocas una tarjeta de la lista** y el mapa vuela a ese punto con zoom cercano.
 - **Pinchas un marcador** y se resalta su fila, pero el mapa no se mueve: así no pierdes la panorámica mientras comparas puntos.

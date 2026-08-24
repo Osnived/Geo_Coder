@@ -1,8 +1,10 @@
 import L from 'leaflet'
-import { useEffect } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } from 'react-leaflet'
 
 import 'leaflet/dist/leaflet.css'
+
+import { clusterPoints, isDegenerate, type Cluster } from './clustering'
 
 /**
  * Mapa sobre OpenStreetMap (spec seccion 16).
@@ -48,6 +50,8 @@ const FLY_DURATION_S = 0.8
 const ARRIVAL_MARGIN_MS = 300
 /** Distancia por debajo de la cual se considera que ya se llego. */
 const ARRIVAL_TOLERANCE_M = 5
+/** Por debajo de esto el contenedor no tiene tamano util para encuadrar. */
+const MIN_USABLE_PX = 50
 
 function pinIcon(selected: boolean): L.DivIcon {
   const fill = selected ? 'var(--color-accent, #2563eb)' : 'var(--color-warn, #b45309)'
@@ -64,6 +68,127 @@ function pinIcon(selected: boolean): L.DivIcon {
     iconAnchor: [size[0] / 2, size[1]],
     popupAnchor: [0, -size[1]],
   })
+}
+
+/** Globo con el numero de puntos que esconde. Crece con la cantidad. */
+function clusterIcon(count: number, hasSelected: boolean): L.DivIcon {
+  const size = count < 10 ? 34 : count < 100 ? 42 : 52
+  const fill = hasSelected ? 'var(--color-accent, #2563eb)' : 'var(--color-warn, #b45309)'
+
+  return L.divIcon({
+    className: '',
+    html: `<div style="
+      width:${String(size)}px;height:${String(size)}px;
+      display:flex;align-items:center;justify-content:center;
+      border-radius:9999px;background:${fill};color:white;
+      border:3px solid white;box-shadow:0 1px 4px rgba(0,0,0,.4);
+      font-size:${String(count < 100 ? 13 : 12)}px;font-weight:600;
+      font-family:system-ui,sans-serif;
+    ">${String(count)}</div>`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+  })
+}
+
+/**
+ * Dibuja los puntos agrupados por cercania en pantalla.
+ *
+ * El zoom se sigue con `zoomend` porque la agrupacion se calcula en pixeles:
+ * al acercarse, los grupos se abren solos.
+ */
+function ClusteredMarkers({
+  points,
+  onSelectPoint,
+}: {
+  points: readonly MapPoint[]
+  onSelectPoint?: ((id: string) => void) | undefined
+}) {
+  const map = useMap()
+  const [zoom, setZoom] = useState(() => map.getZoom())
+
+  useMapEvents({
+    zoomend: () => {
+      setZoom(map.getZoom())
+    },
+  })
+
+  const clusters = useMemo(() => clusterPoints(points, { zoom }), [points, zoom])
+
+  /**
+   * Abre el grupo encuadrando a sus miembros.
+   *
+   * Sin animacion a proposito: al pinchar un grupo lo que se quiere es ver que
+   * hay dentro, y la animacion de Leaflet depende de `requestAnimationFrame`,
+   * que el navegador pausa si la pestana no esta pintando. Ahi el grupo no
+   * llegaria a abrirse nunca.
+   */
+  const openCluster = (cluster: Cluster) => {
+    if (isDegenerate(cluster)) {
+      // Todos en el mismo sitio: acercarse no los separaria.
+      map.setView([cluster.latitude, cluster.longitude], Math.min(map.getZoom() + 3, 19), {
+        animate: false,
+      })
+      return
+    }
+
+    map.fitBounds(
+      [
+        [cluster.bounds.south, cluster.bounds.west],
+        [cluster.bounds.north, cluster.bounds.east],
+      ],
+      { padding: [50, 50], animate: false },
+    )
+  }
+
+  return (
+    <>
+      {clusters.map((cluster) => {
+        const single = cluster.count === 1 ? cluster.members[0] : null
+
+        if (single) {
+          return (
+            <Marker
+              key={single.id}
+              position={[single.latitude, single.longitude]}
+              icon={pinIcon(single.selected)}
+              zIndexOffset={single.selected ? 1000 : 0}
+              title={single.label}
+              eventHandlers={
+                onSelectPoint
+                  ? {
+                      click: () => {
+                        onSelectPoint(single.id)
+                      },
+                    }
+                  : {}
+              }
+            >
+              <Popup>
+                <span className="block text-sm font-medium">{single.label}</span>
+                {single.detail ? (
+                  <span className="mt-0.5 block text-xs opacity-80">{single.detail}</span>
+                ) : null}
+              </Popup>
+            </Marker>
+          )
+        }
+
+        return (
+          <Marker
+            key={cluster.id}
+            position={[cluster.latitude, cluster.longitude]}
+            icon={clusterIcon(cluster.count, cluster.hasSelected)}
+            title={`${String(cluster.count)} registros. Pincha para abrir el grupo.`}
+            eventHandlers={{
+              click: () => {
+                openCluster(cluster)
+              },
+            }}
+          />
+        )
+      })}
+    </>
+  )
 }
 
 /** Recentra el mapa cuando cambia el punto principal, sin tocar el zoom. */
@@ -90,7 +215,7 @@ function FitBounds({ points, fitNonce }: { points: readonly MapPoint[]; fitNonce
     .map((point) => `${String(point.latitude)},${String(point.longitude)}`)
     .join('|')
 
-  useEffect(() => {
+  const fit = useCallback(() => {
     if (points.length === 0) return
 
     const bounds = L.latLngBounds(points.map((point) => [point.latitude, point.longitude]))
@@ -102,7 +227,48 @@ function FitBounds({ points, fitNonce }: { points: readonly MapPoint[]; fitNonce
     // `boundsKey` resume el conjunto: `points` cambia de identidad en cada
     // render aunque su contenido sea el mismo.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, boundsKey, fitNonce])
+  }, [map, boundsKey])
+
+  useEffect(fit, [fit, fitNonce])
+
+  return null
+}
+
+/**
+ * Mantiene a Leaflet al dia del tamano de su contenedor.
+ *
+ * Con altura fija esto no hacia falta, pero desde que el mapa ocupa el espacio
+ * disponible su contenedor cambia con la ventana, y Leaflet no se entera solo:
+ * dibuja con las medidas viejas y deja zonas grises.
+ *
+ * Ademas, si el mapa se monto con el contenedor sin tamano util (una pestana
+ * oculta, un panel plegado), el encuadre inicial salio mal y hay que rehacerlo
+ * en cuanto haya sitio de verdad. Fuera de ese caso no se toca la vista, para
+ * no deshacer el zoom que haya puesto el usuario.
+ */
+function InvalidateOnResize({ onFirstRealSize }: { onFirstRealSize?: (() => void) | undefined }) {
+  const map = useMap()
+
+  useEffect(() => {
+    const container = map.getContainer()
+    let hadRealSize =
+      container.clientWidth > MIN_USABLE_PX && container.clientHeight > MIN_USABLE_PX
+
+    const observer = new ResizeObserver(() => {
+      map.invalidateSize()
+
+      const usable = container.clientWidth > MIN_USABLE_PX && container.clientHeight > MIN_USABLE_PX
+      if (usable && !hadRealSize) {
+        hadRealSize = true
+        onFirstRealSize?.()
+      }
+    })
+    observer.observe(container)
+
+    return () => {
+      observer.disconnect()
+    }
+  }, [map, onFirstRealSize])
 
   return null
 }
@@ -165,6 +331,10 @@ export interface LocationMapProps {
   readonly fitNonce?: number
   /** Punto al que acercarse. Cada `nonce` nuevo dispara el movimiento. */
   readonly flyTo?: FlyTarget | null
+  /** Agrupa los puntos cercanos en globos con su recuento. */
+  readonly cluster?: boolean
+  /** Ocupa el alto que le deje su contenedor en lugar de una altura fija. */
+  readonly fill?: boolean
   readonly heightClass?: string
   readonly onPickPoint?: (latitude: number, longitude: number) => void
   readonly onSelectPoint?: (id: string) => void
@@ -177,21 +347,36 @@ export function LocationMap({
   fitToPoints = false,
   fitNonce = 0,
   flyTo = null,
+  cluster = false,
+  fill = false,
   heightClass = 'h-80',
   onPickPoint,
   onSelectPoint,
 }: LocationMapProps) {
+  /** Fuerza un reencuadre cuando el contenedor por fin tiene tamano util. */
+  const [resizeFit, setResizeFit] = useState(0)
+
   return (
     <MapContainer
       center={[center.latitude, center.longitude]}
       zoom={zoom}
       scrollWheelZoom
-      className={`border-border-subtle w-full rounded-md border ${heightClass}`}
+      className={`border-border-subtle w-full rounded-md border ${fill ? 'min-h-0 flex-1' : heightClass}`}
     >
       <TileLayer url={OSM_TILES} attribution={OSM_ATTRIBUTION} maxZoom={19} />
 
+      <InvalidateOnResize
+        onFirstRealSize={
+          fitToPoints
+            ? () => {
+                setResizeFit((current) => current + 1)
+              }
+            : undefined
+        }
+      />
+
       {fitToPoints ? (
-        <FitBounds points={points} fitNonce={fitNonce} />
+        <FitBounds points={points} fitNonce={fitNonce + resizeFit} />
       ) : (
         <Recenter latitude={center.latitude} longitude={center.longitude} />
       )}
@@ -200,32 +385,36 @@ export function LocationMap({
 
       {onPickPoint ? <ClickHandler onPick={onPickPoint} /> : null}
 
-      {points.map((point) => (
-        <Marker
-          key={point.id}
-          position={[point.latitude, point.longitude]}
-          icon={pinIcon(point.selected)}
-          // Los seleccionados se dibujan encima del resto.
-          zIndexOffset={point.selected ? 1000 : 0}
-          title={point.label}
-          eventHandlers={
-            onSelectPoint
-              ? {
-                  click: () => {
-                    onSelectPoint(point.id)
-                  },
-                }
-              : {}
-          }
-        >
-          <Popup>
-            <span className="block text-sm font-medium">{point.label}</span>
-            {point.detail ? (
-              <span className="mt-0.5 block text-xs opacity-80">{point.detail}</span>
-            ) : null}
-          </Popup>
-        </Marker>
-      ))}
+      {cluster ? (
+        <ClusteredMarkers points={points} onSelectPoint={onSelectPoint} />
+      ) : (
+        points.map((point) => (
+          <Marker
+            key={point.id}
+            position={[point.latitude, point.longitude]}
+            icon={pinIcon(point.selected)}
+            // Los seleccionados se dibujan encima del resto.
+            zIndexOffset={point.selected ? 1000 : 0}
+            title={point.label}
+            eventHandlers={
+              onSelectPoint
+                ? {
+                    click: () => {
+                      onSelectPoint(point.id)
+                    },
+                  }
+                : {}
+            }
+          >
+            <Popup>
+              <span className="block text-sm font-medium">{point.label}</span>
+              {point.detail ? (
+                <span className="mt-0.5 block text-xs opacity-80">{point.detail}</span>
+              ) : null}
+            </Popup>
+          </Marker>
+        ))
+      )}
     </MapContainer>
   )
 }

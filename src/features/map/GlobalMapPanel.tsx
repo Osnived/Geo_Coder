@@ -28,6 +28,9 @@ const STATUS_TONE = {
   PENDING: 'neutral',
 } as const
 
+/** A partir de aqui, agrupar aporta mas que estorba. */
+const AUTO_GROUP_FROM = 25
+
 /** Centro por defecto cuando todavía no hay nada que mostrar: Bogotá. */
 const FALLBACK_CENTER = { latitude: 4.711, longitude: -74.0721 }
 
@@ -56,6 +59,11 @@ export function GlobalMapPanel() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [flyTo, setFlyTo] = useState<FlyTarget | null>(null)
   const [fitNonce, setFitNonce] = useState(0)
+  /**
+   * `null` = decidir solo. Con pocos puntos agrupar estorba; con cientos, sin
+   * agrupar no se distingue si una chincheta tapa a dos o a veinte.
+   */
+  const [groupOverride, setGroupOverride] = useState<boolean | null>(null)
 
   // Cada vuelo necesita un disparador distinto para poder repetirse.
   const flightNumber = useRef(0)
@@ -101,6 +109,8 @@ export function GlobalMapPanel() {
     [visible, selectedId],
   )
 
+  const grouping = groupOverride ?? visible.length >= AUTO_GROUP_FROM
+
   const selected = visible.find((record) => record.id === selectedId) ?? null
 
   /** Elegir en la lista selecciona el registro y acerca el mapa a su punto. */
@@ -141,8 +151,9 @@ export function GlobalMapPanel() {
   }
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[20rem_1fr]">
+    <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[20rem_1fr]">
       <Panel
+        fill
         title={`Localizados (${String(visible.length)})`}
         description={
           located.length < records.length
@@ -150,7 +161,7 @@ export function GlobalMapPanel() {
             : 'Todos los registros tienen coordenadas.'
         }
       >
-        <div className="flex flex-col gap-2">
+        <div className="flex min-h-0 flex-1 flex-col gap-2">
           <TextInput
             placeholder="Buscar..."
             value={search}
@@ -192,7 +203,7 @@ export function GlobalMapPanel() {
               Ningún registro localizado coincide con los filtros.
             </p>
           ) : (
-            <ul className="flex max-h-[30rem] flex-col gap-1 overflow-y-auto">
+            <ul className="-mx-1 flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-1">
               {visible.map((record) => (
                 <li key={record.id}>
                   <button
@@ -219,24 +230,41 @@ export function GlobalMapPanel() {
         </div>
       </Panel>
 
-      <div className="flex flex-col gap-4">
+      <div className="flex min-h-0 flex-col gap-4">
         <Panel
+          fill
           title="Mapa"
-          description="Pincha un punto para verlo en la lista. El mapa se encuadra solo."
+          description={
+            grouping
+              ? 'Los puntos cercanos se agrupan. Pincha un grupo para abrirlo.'
+              : 'Pincha un punto para verlo en la lista. El mapa se encuadra solo.'
+          }
           actions={
             <>
               {selected ? (
                 <Badge tone={STATUS_TONE[selected.status]}>{STATUS_LABELS[selected.status]}</Badge>
               ) : null}
               {visible.length > 1 ? (
-                <Button onClick={showAll} title="Vuelve a encuadrar todos los puntos">
-                  Ver todos
-                </Button>
+                <>
+                  <label className="text-ink-muted flex items-center gap-1.5 text-sm whitespace-nowrap">
+                    <input
+                      type="checkbox"
+                      checked={grouping}
+                      onChange={(event) => {
+                        setGroupOverride(event.target.checked)
+                      }}
+                    />
+                    Agrupar
+                  </label>
+                  <Button onClick={showAll} title="Vuelve a encuadrar todos los puntos">
+                    Ver todos
+                  </Button>
+                </>
               ) : null}
             </>
           }
         >
-          <div className="flex flex-col gap-3">
+          <div className="flex min-h-0 flex-1 flex-col gap-3">
             {visible.length === 0 ? (
               <Callout tone="warn">
                 No hay nada que dibujar. Geocodifica registros o cambia los filtros.
@@ -249,12 +277,13 @@ export function GlobalMapPanel() {
               fitToPoints
               fitNonce={fitNonce}
               flyTo={flyTo}
-              heightClass="h-[34rem]"
+              cluster={grouping}
+              fill
               onSelectPoint={selectFromMap}
             />
 
             {selected?.result ? (
-              <div className="border-border-subtle rounded-md border px-3 py-2 text-xs">
+              <div className="border-border-subtle shrink-0 rounded-md border px-3 py-2 text-xs">
                 <p className="text-sm font-medium">{displayName(selected)}</p>
                 <p className="text-ink-muted">{selected.result.matchedAddress}</p>
                 <p className="text-ink-faint mt-1 tabular-nums">
