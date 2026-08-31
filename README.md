@@ -59,7 +59,15 @@ Todo el ingreso de información ocurre aquí, sin cambiar de pantalla. Dos pesta
 
   ¿No sabes cómo estructurar el archivo? El botón **Descargar plantilla** genera un `.xlsx` con los encabezados que la aplicación reconoce sola, tres filas de ejemplo y una hoja de instrucciones. También está en [`public/samples/plantilla-geolocator.xlsx`](public/samples/plantilla-geolocator.xlsx).
 
+  **Si al archivo le falta el cliente o el tipo de establecimiento**, el paso de mapeo te deja escribirlo una vez para toda la carga. Es el caso típico: un Excel de tiendas de una sola cadena no repite el nombre de la cadena en cada fila. Solo rellena los huecos —nunca pisa el valor que sí trae una fila— y las columnas originales del archivo no se tocan. Merece la pena: el cliente pesa un 20 % en la puntuación de la búsqueda.
+
 - **Ingreso manual** — registros a mano, que producen exactamente el mismo modelo que los importados.
+
+  **Ciudad y departamento se autocompletan**, acotados al país que tengas fijado. Escribe `barran` con Colombia y te ofrece Barranquilla (Atlántico), Barrancas (La Guajira), Barranca de Upía (Meta)… Al elegir una ciudad **se rellena su departamento**, que es lo que de verdad ahorra tiempo: nadie se sabe de memoria a qué departamento pertenece cada municipio.
+
+  Siguen siendo campos de texto normales: OpenStreetMap no conoce todos los municipios, así que puedes escribir el que falte. Si no hay internet, se avisa y se escribe a mano.
+
+  El código postal no se sugiere, y no es un olvido: una ciudad tiene cientos de códigos postales y no hay ninguno que proponer. Se rellena solo al geocodificar una dirección concreta.
 
 A la derecha, **Registros ingresados**: lo que acabas de cargar aparece ahí en el momento, agrupado por origen.
 
@@ -102,6 +110,18 @@ Reintentando… intento 1 de 3
 Resultado: 48 %
 ✓ Se alcanzó el porcentaje mínimo.
 ```
+
+**Mientras corre hay reloj**, porque con Nominatim a una consulta por segundo un lote grande son minutos u horas:
+
+```text
+Consultando  Éxito San Antonio  0:05
+
+TRANSCURRIDO   RESTANTE        RITMO
+0:21           ~0:35           8.5
+               estimado        registros/min
+```
+
+El tiempo restante se calcula con el ritmo real de esa ejecución, no con un número fijo, así que se corrige a sí mismo; va etiquetado como estimación porque lo es. El registro que se está consultando lleva su propio contador y se marca en amarillo pasados 15 segundos, para que se vea si uno se ha quedado colgado. Al terminar, el cronómetro se congela y cada vuelta guarda su duración.
 
 Nunca es un girador a secas: la pantalla dice en qué vuelta va, cuánto lleva procesado, el porcentaje de cada intento y por qué se detuvo. Los tres motivos posibles son que se alcanzara el mínimo, que se agotaran los reintentos, o que **no quede nada que reintentar** porque los registros que faltan ya tienen un candidato y lo que necesitan es una decisión humana.
 
@@ -169,6 +189,8 @@ Tiene **la barra horizontal arriba** además de abajo, sincronizadas, y cabecera
 En pantallas anchas las vistas de trabajo **ocupan exactamente la pantalla**: la página no se desplaza, se desplazan las listas y las tablas por dentro, así que los filtros y la cabecera nunca se pierden de vista. Por debajo de 1024 px las columnas se apilan y la página se desplaza con normalidad.
 
 Los estados **no dependen del color**: cada uno lleva su símbolo (`✓ Encontrado`, `⚠ Confianza baja`, `✕ No encontrado`, `○ Pendiente`). Todos los campos tienen etiqueta escrita, no solo texto de relleno. El foco es visible en todo lo que se puede usar, incluidos los desplegables y las pestañas, que se recorren con las flechas como un control nativo.
+
+El autocompletado de ciudad y departamento también se maneja solo con el teclado: flechas para recorrer, Enter para aceptar, Esc para cerrar sin perder lo escrito.
 
 ## Sobre la precisión
 

@@ -144,6 +144,10 @@ Vale la pena dejarlos escritos porque explican decisiones del código:
 13. **Los componentes geográficos del proveedor se tiraban.** Nominatim y Photon ya devolvían estado, municipio y código postal separados, pero se perdían al construir el resultado y la exportación solo tenía una dirección formateada. Ahora el resultado los guarda.
 14. **Con el alto completo aplicado en móvil, el mapa se dibujaba con 0 px.** A 375 px las columnas se apilan y repartir el alto de la ventana entre cuatro bloques dejaba la cola de revisión en 60 px y el mapa en nada. El alto completo se aplica ahora solo desde `lg`, y los mapas llevan alto mínimo.
 15. **Los tres filtros de la tabla de registros se comprimían hasta solaparse** en pantalla estrecha (`GRUPOORIGENESTADO`). Se les dio ancho mínimo para que salten de línea en lugar de encogerse.
+16. **`describeBatch` repetía el nombre en los CSV** («tiendas.csv · tiendas.csv»), porque un CSV no tiene hojas y el lector usa el nombre del archivo también como nombre de hoja.
+17. **La ayuda de un campo entraba en su nombre accesible.** `Field` envolvía el control en el `<label>`, así que «Ciudad» se llamaba «Ciudad Fija un país en la barra lateral» y, con el desplegable de sugerencias, «Ciudad Buscando sugerencias». Lo destaparon los tests del formulario manual. La asociación pasó a ser explícita con `htmlFor`.
+18. **La vuelta de las flechas del desplegable fallaba sin nada resaltado:** flecha arriba iba al segundo elemento en lugar de al último, porque la aritmética modular no contemplaba el estado «sin selección». Lo cazó un test al primer intento.
+19. **Elegir una sugerencia disparaba otra consulta** preguntando por lo que se acababa de elegir: una petición tirada y el desplegable reabriéndose con la opción ya escogida.
 
 ## Deuda y puntos abiertos
 

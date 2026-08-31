@@ -48,7 +48,7 @@ src/
 │   ├── geocoders/                 limitador, cache, reintentos
 │   └── storage/                   IndexedDB (Dexie) y migraciones
 ├── providers/
-│   ├── nominatim/  photon/        geocodificadores
+│   ├── nominatim/  photon/        geocodificadores y sugerencias de lugares
 │   └── ai/                        asistente sobre modelo local
 └── shared/                        países, ids, configuración, utilidades
 ```
@@ -148,6 +148,50 @@ Decidirlo registro a registro gastaría peticiones sin saber todavía si el lote
 **Sobre qué se mide.** El porcentaje se calcula siempre sobre el conjunto de la pasada inicial, no sobre los que quedan por reintentar. Medirlo sobre los reintentos daría porcentajes que suben y bajan sin significar nada.
 
 **Qué cuenta como éxito.** Solo `FOUND` y `MANUALLY_VERIFIED`. `LOW_CONFIDENCE` y `NEEDS_REVIEW` tienen coordenadas, pero la aplicación no las da por buenas: el porcentaje mide lo resuelto, no lo que aún espera a una persona.
+
+### Valores por defecto de una carga
+
+Un Excel de tiendas de una sola cadena rara vez repite el nombre de la cadena en cada fila: quien lo hizo ya sabía de quién era el archivo. Sin ese dato la búsqueda pierde una señal que pesa un 20 % en el scoring.
+
+El paso de mapeo ofrece escribirlo una vez para toda la carga. La regla es la misma que ya seguía el país global, y por eso `applyDefaultCountry` se generalizó a `applyDefaults`: **solo rellena huecos**. Pisar el valor que sí trae la fila sería perder información de entrada (principio 2). El valor va a los campos normalizados, nunca a la fila cruda.
+
+Solo se ofrece para `client` y `business_type`. `location_name` queda fuera a propósito: darle el mismo nombre a todas las sucursales destruiría lo único que permite distinguirlas, que es de donde salen los topes de confianza.
+
+El bloque aparece tanto si no hay columna asignada como si la hay con huecos. En el segundo caso el texto dice «2 de las 3 filas de la muestra», porque la vista previa son 25 filas y no el archivo entero: prometer un total sería inventárselo.
+
+### El reloj del procesamiento vive en la interfaz
+
+El store guarda **marcas de tiempo** (`startedAt`, `roundStartedAt`, `currentRecordStartedAt`, `finishedAt`), no un contador. Si guardara los segundos transcurridos, cada tic volvería a renderizar todo lo suscrito al store —la tabla, la barra lateral, los filtros— para mover un número. El reloj que avanza es [`useTicker`](src/features/search/useTicker.ts), y solo lo usa el panel que lo muestra.
+
+El tiempo restante se estima con el ritmo medido en esa misma ejecución, no con una constante: el limitador, la caché y el número de estrategias por registro cambian el ritmo entre lotes y entre máquinas. No se estima hasta tener tres muestras, porque el primer registro suele ser el más lento y anunciar «40 minutos» para corregirlo a 3 al segundo siguiente es peor que no decir nada.
+
+La cuenta atrás es de la vuelta en curso, no del proceso entero: si al arrancar un reintento el número subiera, parecería que el programa miente.
+
+### Sugerir lugares es otro puerto
+
+`PlaceSuggestionProvider` está separado de `GeocoderProvider` a propósito. Geocodificar es «dame las coordenadas de este establecimiento»; sugerir es «voy escribiendo, dime qué ciudades empiezan así». Tienen ritmos, formas y errores distintos, y meterlos en la misma interfaz obligaría a que cada implementación soportara ambos.
+
+**Cómo se acota al país.** Photon no admite filtrar por país. Se midieron tres formas contra el servicio real, buscando `barran` y contando cuántos de 10 resultados eran colombianos:
+
+| Forma                                        | Aciertos     |
+| -------------------------------------------- | ------------ |
+| Sin acotar                                   | 4 de 10      |
+| Con el `bbox` del país                       | 9 de 10      |
+| Con el nombre del país dentro de la consulta | **10 de 10** |
+
+Gana la tercera, y además no obliga a mantener a mano una tabla de cajas geográficas de 250 países que, mal copiada, dejaría municipios fuera. El nombre ya lo da el catálogo. El filtro definitivo lo hace `refineSuggestions` comparando el código ISO, con la misma regla que el scoring: solo se descarta cuando **ambos** códigos se conocen.
+
+**Lo que no se puede sugerir.** El código postal. Photon devuelve `postcode` vacío para las ciudades, y no por una carencia del servicio: una ciudad tiene cientos de códigos postales y no hay ninguno que sugerir. Nominatim sí devuelve uno, pero solo al geocodificar una dirección concreta. Lo que la aplicación sí hace es guardarlo en `result.components.postalCode` cuando lo encuentra.
+
+**Consumo.** Photon es un servicio público de uso razonable, así que el hook espera 300 ms tras la última pulsación, cachea por consulta, cancela la petición en vuelo cuando llega otra y no pregunta por debajo de tres caracteres ni por el valor que se acaba de elegir. Medido en el navegador: escribir «cartagena» son nueve letras y **una** petición.
+
+El campo sigue siendo un campo de texto y no un desplegable cerrado: OpenStreetMap no conoce todos los municipios, y un fallo de red no debe impedir escribir a mano.
+
+### Las etiquetas se asocian por `id`, no envolviendo el control
+
+`Field` usa `htmlFor` y un `id` inyectado en el hijo. Envolver el control en la etiqueta parece más cómodo, pero convierte **todo** el texto de dentro en el nombre accesible del campo: la ayuda hacía que «Ciudad» se llamara «Ciudad Fija un país en la barra lateral», y el aviso del desplegable de sugerencias lo dejaba en «Ciudad Buscando sugerencias». Lo destaparon los tests del formulario manual.
+
+Cuando el hijo no es el control en sí —un contenedor con el campo y un sufijo, por ejemplo— hay que pasar `htmlFor` y poner el `id` a mano.
 
 ### Nombres de columna legibles en la exportación
 
@@ -251,17 +295,17 @@ El flujo importar → mapear → geocodificar → revisar comparte un único con
 
 ## Pruebas
 
-464 tests con Vitest.
+579 tests con Vitest.
 
-- **Dominio** — detección de columnas contra los ejemplos de la especificación, similitud de textos con acentos y abreviaturas, validación, normalización, construcción de consultas, scoring señal a señal, transiciones de revisión, política de reintentos, agrupación, exportación, saneado de la IA.
+- **Dominio** — detección de columnas contra los ejemplos de la especificación, similitud de textos con acentos y abreviaturas, validación, normalización, construcción de consultas, scoring señal a señal, transiciones de revisión, política de reintentos, agrupación, depurado de sugerencias, exportación, saneado de la IA.
 - **Infraestructura** — se generan archivos `.xlsx` y CSV reales en memoria y se vuelven a leer, incluido un ciclo completo escribir-leer. Los tests corren en jsdom, que resuelve el build de navegador de ExcelJS: si se rompiera, se detectaría aquí.
-- **Proveedores** — Nominatim y Photon con `fetch` simulado: traducción de respuestas, errores HTTP, cancelación.
+- **Proveedores** — Nominatim, Photon y las sugerencias de lugares con `fetch` simulado: traducción de respuestas, errores HTTP, cancelación. El simulacro atiende la señal de cancelación; si resolviera de todas formas, el test comprobaría el simulacro y no el código.
 - **Persistencia** — el repositorio se prueba contra IndexedDB (`fake-indexeddb`) y contra memoria con la misma batería, más las migraciones.
 - **Aplicación** — el recorrido completo sobre el store, con archivos reales. El bucle de reintentos se prueba con un proveedor de mentira que decide qué encuentra y en qué vuelta: así se comprueba cuándo reintenta, sobre qué registros y cuándo se rinde, sin salir a la red.
 - **Exportación de verdad** — se genera el `.xlsx`, se vuelve a leer y se comprueba lo que hay dentro: columnas geográficas separadas, latitud y longitud como números, código postal con su cero delante y el filtro por grupo.
-- **UI** — el formulario manual con Testing Library, incluida la agrupación por sesión y el cierre de grupo.
+- **UI** — el formulario manual con Testing Library, incluidas la agrupación por sesión, el cierre de grupo y las sugerencias con un proveedor inyectado. El desplegable se prueba por su semántica accesible y por teclado, no por sus clases CSS.
 
-`src/test/setup.ts` rellena `Blob.prototype.arrayBuffer`, que jsdom no implementa pero sí existe en todos los navegadores actuales, y registra la limpieza de Testing Library.
+`src/test/setup.ts` rellena dos huecos de jsdom que sí existen en todos los navegadores —`Blob.prototype.arrayBuffer` y `Element.prototype.scrollIntoView`— y registra la limpieza de Testing Library.
 
 ## Lo que queda fuera a propósito
 
