@@ -1,4 +1,4 @@
-import type { GeocodeResult } from '@/domain/models/geocode'
+import { emptyComponents, type GeocodeResult } from '@/domain/models/geocode'
 import type { EstablishmentRecord } from '@/domain/models/record'
 import { emptyFields } from '@/domain/models/fields'
 import { LEGACY_BATCH_ID } from '@/domain/models/batch'
@@ -22,6 +22,9 @@ function migrateResult(result: GeocodeResult | null | undefined): GeocodeResult 
     candidates: result.candidates ?? [],
     attempts: result.attempts ?? [],
     notes: result.notes ?? [],
+    // Los resultados guardados antes de separar los componentes geograficos no
+    // los traen. Se rellenan vacios: nunca se inventan a partir del texto.
+    components: result.components ?? emptyComponents(),
     ...(result.replaced ? { replaced: migrateResult(result.replaced) ?? undefined } : {}),
   } as GeocodeResult
 }

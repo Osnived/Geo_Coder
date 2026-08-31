@@ -40,7 +40,7 @@ export function TextInput({ className, ...props }: InputHTMLAttributes<HTMLInput
   return (
     <input
       className={cx(
-        'border-border-subtle bg-surface text-ink placeholder:text-ink-faint w-full rounded-md border px-2.5 py-1.5 text-sm',
+        'border-border-subtle bg-surface text-ink placeholder:text-ink-muted w-full rounded-md border px-2.5 py-1.5 text-sm',
         className,
       )}
       {...props}
@@ -62,20 +62,39 @@ export function Select({ className, children, ...props }: SelectHTMLAttributes<H
   )
 }
 
+/**
+ * Etiqueta + control + ayuda.
+ *
+ * La etiqueta siempre esta escrita y visible: un `placeholder` desaparece al
+ * escribir y no lo lee un lector de pantalla como nombre del campo.
+ *
+ * El texto de error se envuelve en el mismo `<label>` que el control, asi que
+ * se anuncia junto al nombre del campo sin tener que generar ids.
+ */
 export function Field({
   label,
   hint,
+  error,
   children,
 }: {
   label: string
   hint?: string | undefined
+  /** Mensaje de validacion. Sustituye a la ayuda mientras este presente. */
+  error?: string | null | undefined
   children: ReactNode
 }) {
   return (
     <label className="flex flex-col gap-1">
       <span className="text-ink-muted text-xs font-medium tracking-wide uppercase">{label}</span>
       {children}
-      {hint ? <span className="text-ink-faint text-xs">{hint}</span> : null}
+      {error ? (
+        <span className="text-danger text-xs" role="alert">
+          <span aria-hidden="true">✕ </span>
+          {error}
+        </span>
+      ) : hint ? (
+        <span className="text-ink-muted text-xs">{hint}</span>
+      ) : null}
     </label>
   )
 }
@@ -149,21 +168,66 @@ export function Panel({
   )
 }
 
-export function Callout({
-  tone,
+type CalloutTone = 'danger' | 'warn' | 'accent' | 'ok'
+
+const CALLOUT_STYLES: Record<CalloutTone, string> = {
+  danger: 'bg-danger-soft text-danger border-danger/30',
+  warn: 'bg-warn-soft text-warn border-warn/30',
+  accent: 'bg-accent-soft text-accent border-accent/30',
+  ok: 'bg-ok-soft text-ok border-ok/30',
+}
+
+/** Simbolo por tono: el aviso se entiende tambien en blanco y negro. */
+const CALLOUT_ICONS: Record<CalloutTone, string> = {
+  danger: '✕',
+  warn: '⚠',
+  accent: 'ℹ',
+  ok: '✓',
+}
+
+/**
+ * Bloque con titulo dentro de un panel ya existente.
+ *
+ * Alternativa ligera a `Panel` para las vistas que ya viven dentro de una
+ * tarjeta: anidar bordes y sombras convierte una pantalla de trabajo en un
+ * acordeon de marcos.
+ */
+export function Section({
+  title,
+  description,
+  actions,
   children,
 }: {
-  tone: 'danger' | 'warn' | 'accent'
+  title: string
+  description?: string | undefined
+  actions?: ReactNode
   children: ReactNode
 }) {
-  const styles: Record<typeof tone, string> = {
-    danger: 'bg-danger-soft text-danger border-danger/20',
-    warn: 'bg-warn-soft text-warn border-warn/20',
-    accent: 'bg-accent-soft text-accent border-accent/20',
-  }
   return (
-    <div className={cx('rounded-md border px-3 py-2 text-sm', styles[tone])} role="status">
+    <section className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-semibold">{title}</h3>
+          {description ? <p className="text-ink-muted mt-0.5 text-xs">{description}</p> : null}
+        </div>
+        {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
+      </div>
       {children}
+    </section>
+  )
+}
+
+export function Callout({ tone, children }: { tone: CalloutTone; children: ReactNode }) {
+  return (
+    <div
+      className={cx('flex gap-2 rounded-md border px-3 py-2 text-sm', CALLOUT_STYLES[tone])}
+      // Un error interrumpe; el resto se anuncia cuando toque.
+      role={tone === 'danger' ? 'alert' : 'status'}
+    >
+      <span aria-hidden="true" className="shrink-0 leading-5">
+        {CALLOUT_ICONS[tone]}
+      </span>
+      <div className="min-w-0">{children}</div>
     </div>
   )
 }
@@ -172,7 +236,7 @@ export function EmptyState({ title, hint }: { title: string; hint?: string | und
   return (
     <div className="border-border-subtle text-ink-muted rounded-md border border-dashed px-4 py-10 text-center">
       <p className="text-sm font-medium">{title}</p>
-      {hint ? <p className="text-ink-faint mt-1 text-xs">{hint}</p> : null}
+      {hint ? <p className="text-ink-muted mt-1 text-xs">{hint}</p> : null}
     </div>
   )
 }

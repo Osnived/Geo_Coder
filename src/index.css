@@ -1,23 +1,37 @@
 @import 'tailwindcss';
 
+/**
+ * Paleta.
+ *
+ * Los colores de estado se eligieron para cumplir el contraste minimo de 4.5:1
+ * en los dos usos que tienen en la aplicacion: texto sobre su propio fondo
+ * suave (`text-warn` sobre `bg-warn-soft`) y texto blanco sobre el color pleno
+ * (`bg-accent text-white`). Por eso las variantes plenas estan en el 45% de
+ * luminosidad y las suaves en el 96,5%: mas claras las unas o mas oscuras las
+ * otras y una de las dos combinaciones se cae.
+ *
+ * `ink-faint` no cumple 4.5:1 a proposito: esta reservado a lo decorativo
+ * —iconos que acompanan a un texto, guiones de celda vacia— y no debe usarse
+ * para informacion. Para texto secundario esta `ink-muted`.
+ */
 @theme {
   --color-surface: oklch(100% 0 0);
   --color-surface-muted: oklch(97% 0.003 250);
   --color-surface-sunken: oklch(94.5% 0.005 250);
-  --color-border-subtle: oklch(90% 0.006 250);
-  --color-border-strong: oklch(80% 0.01 250);
-  --color-ink: oklch(25% 0.012 250);
-  --color-ink-muted: oklch(52% 0.014 250);
-  --color-ink-faint: oklch(66% 0.012 250);
+  --color-border-subtle: oklch(89% 0.006 250);
+  --color-border-strong: oklch(76% 0.012 250);
+  --color-ink: oklch(23% 0.012 250);
+  --color-ink-muted: oklch(46% 0.014 250);
+  --color-ink-faint: oklch(60% 0.012 250);
 
-  --color-accent: oklch(52% 0.16 255);
-  --color-accent-soft: oklch(95% 0.03 255);
-  --color-danger: oklch(52% 0.19 25);
-  --color-danger-soft: oklch(95% 0.035 25);
-  --color-warn: oklch(58% 0.13 75);
-  --color-warn-soft: oklch(96% 0.04 85);
-  --color-ok: oklch(52% 0.12 155);
-  --color-ok-soft: oklch(95% 0.04 155);
+  --color-accent: oklch(45% 0.16 255);
+  --color-accent-soft: oklch(96.5% 0.025 255);
+  --color-danger: oklch(45% 0.19 25);
+  --color-danger-soft: oklch(96.5% 0.03 25);
+  --color-warn: oklch(45% 0.11 65);
+  --color-warn-soft: oklch(96.5% 0.035 85);
+  --color-ok: oklch(45% 0.12 155);
+  --color-ok-soft: oklch(96.5% 0.035 155);
 }
 
 html,
@@ -32,8 +46,46 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Anillo de foco consistente en toda la aplicacion. */
-:where(button, input, select, textarea, [tabindex]):focus-visible {
+/**
+ * Anillo de foco consistente en toda la aplicacion.
+ *
+ * Se aplica a todo lo interactivo, incluidos `summary` y los elementos con
+ * `tabindex`, porque el rediseno usa `details` y paneles de pestanas como
+ * controles de verdad. Nunca se quita un `outline` sin poner otro: sin foco
+ * visible, navegar con teclado es adivinar donde estas.
+ */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* Las casillas y radios pequenos se pierden con el offset por defecto. */
+:where(input[type='checkbox'], input[type='radio']):focus-visible {
+  outline-offset: 1px;
+}
+
+/**
+ * El contenido de una pestana es alcanzable con el teclado, pero no debe
+ * dibujar un anillo cuando se llega a el con el raton.
+ */
+[role='tabpanel']:focus {
+  outline: none;
+}
+
+[role='tabpanel']:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
+/* Quien prefiera menos movimiento no deberia sufrir las transiciones. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

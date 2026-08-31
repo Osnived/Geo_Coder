@@ -1,6 +1,7 @@
 import type { ImportBatch } from '@/domain/models/batch'
 import type { Country } from '@/domain/models/country'
 import type { EstablishmentRecord } from '@/domain/models/record'
+import type { RetrySettings } from '@/domain/services/retryPolicy'
 
 import { createDb, type GeolocatorDb, type SessionSettings } from './db'
 import { migrateRecords } from './migrations'
@@ -23,6 +24,7 @@ export interface RecordRepository {
     country: Country | null
     requireCountry: boolean
     useFallbackProvider: boolean
+    retry: RetrySettings
     ai: { enabled: boolean; endpoint: string; model: string }
     updatedAt: string
   }): Promise<void>

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { makeRecord } from '@/test/factories'
 
-import type { GeocodeCandidate, GeocodeResult } from '../models/geocode'
+import { emptyComponents, type GeocodeCandidate, type GeocodeResult } from '../models/geocode'
 import type { EstablishmentRecord } from '../models/record'
 
 import {
@@ -39,6 +39,7 @@ function result(overrides: Partial<GeocodeResult> = {}): GeocodeResult {
     confidence: 0.6,
     queryUsed: 'Olimpica Prado, Barranquilla, Colombia',
     manuallyVerified: false,
+    components: emptyComponents(),
     candidates: [candidate()],
     attempts: [],
     notes: [],

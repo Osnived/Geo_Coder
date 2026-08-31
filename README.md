@@ -28,59 +28,125 @@ Abre `http://localhost:5173`.
 
 ## Scripts
 
-| Script | Qué hace |
-| --- | --- |
-| `npm run dev` | Servidor de desarrollo con recarga en caliente |
-| `npm run build` | Compilación de producción en `dist/` |
-| `npm run preview` | Sirve `dist/` para revisar la build |
-| `npm test` | Tests con Vitest |
-| `npm run test:watch` | Tests en modo watch |
-| `npm run lint` | ESLint |
-| `npm run typecheck` | TypeScript sin emitir |
-| `npm run check` | lint + typecheck + tests + build |
-| `npm run template` | Regenera la plantilla de carga en `public/samples/` |
+| Script               | Qué hace                                            |
+| -------------------- | --------------------------------------------------- |
+| `npm run dev`        | Servidor de desarrollo con recarga en caliente      |
+| `npm run build`      | Compilación de producción en `dist/`                |
+| `npm run preview`    | Sirve `dist/` para revisar la build                 |
+| `npm test`           | Tests con Vitest                                    |
+| `npm run test:watch` | Tests en modo watch                                 |
+| `npm run lint`       | ESLint                                              |
+| `npm run typecheck`  | TypeScript sin emitir                               |
+| `npm run check`      | lint + typecheck + tests + build                    |
+| `npm run template`   | Regenera la plantilla de carga en `public/samples/` |
 
 ## Cómo se usa
 
-La navegación está en una **barra lateral** a la izquierda, agrupada por etapa del trabajo: Datos, Geocodificación y Salida. Muestra el número de registros y cuántos esperan revisión. El selector de país vive abajo del todo. En pantallas estrechas la barra se pliega detrás de un botón.
+La navegación está en una **barra lateral** a la izquierda y sigue el flujo real del trabajo:
 
-Las secciones siguen el flujo de trabajo.
+```text
+Flujo         Datos · Procesamiento · Revisión · Exportar
+Herramientas  Mapa · Ajustes
+```
 
-### 1. Importar Excel
+Cada entrada lleva el recuento de lo que queda por hacer en esa etapa. El selector de país vive abajo del todo. En pantallas estrechas la barra se pliega detrás de un botón.
 
-¿No sabes cómo estructurar el archivo? El botón **Descargar plantilla** genera un `.xlsx` con los encabezados que la aplicación reconoce sola, tres filas de ejemplo y una hoja de instrucciones que explica qué va en cada columna. También está en [`public/samples/plantilla-geolocator.xlsx`](public/samples/plantilla-geolocator.xlsx).
+### 1. Datos
 
-Carga `.xlsx`, `.xlsm`, `.csv` o `.tsv`. Elige la hoja, confirma cuál fila trae los encabezados, revisa la vista previa y corrige el mapeo de columnas. La detección automática es siempre una sugerencia.
+Todo el ingreso de información ocurre aquí, sin cambiar de pantalla. Dos pestañas eligen el método:
 
-### 2. Entrada manual
+- **Carga masiva** — `.xlsx`, `.xlsm`, `.csv` o `.tsv`. Elige la hoja, confirma cuál fila trae los encabezados, revisa la vista previa y corrige el mapeo de columnas. La detección automática es siempre una sugerencia.
 
-Crea registros a mano. Producen exactamente el mismo modelo que los importados y conviven en la misma tabla.
+  ¿No sabes cómo estructurar el archivo? El botón **Descargar plantilla** genera un `.xlsx` con los encabezados que la aplicación reconoce sola, tres filas de ejemplo y una hoja de instrucciones. También está en [`public/samples/plantilla-geolocator.xlsx`](public/samples/plantilla-geolocator.xlsx).
 
-### 3. Registros
+- **Ingreso manual** — registros a mano, que producen exactamente el mismo modelo que los importados.
 
-Tabla unificada con filtros por texto, **lote**, origen y estado. Edición en línea, duplicado y borrado. Cada registro muestra sus problemas de validación sin que nada se descarte.
+A la derecha, **Registros ingresados**: lo que acabas de cargar aparece ahí en el momento, agrupado por origen.
 
-Registros y Búsqueda **ocupan exactamente la pantalla**: la página no se desplaza, se desplaza la tabla o la lista por dentro. Así los filtros y la cabecera nunca se pierden de vista.
+#### Grupos
 
-La tabla, además, tiene **la barra horizontal arriba** (además de abajo, y las dos van sincronizadas) y cabecera fija.
+Todo registro pertenece a un **grupo**, que dice de dónde salió:
 
-Arriba aparece la lista de **lotes**: cada importación de una hoja es un lote propio, con el nombre del archivo, la hoja y la fecha y hora exactas. Los registros manuales se agrupan en un lote por día. Pinchando un lote se filtra la tabla; también se puede borrar un lote entero con todos sus registros.
+| Origen                                     | Grupo                                                 |
+| ------------------------------------------ | ----------------------------------------------------- |
+| `clientes_barranquilla.xlsx` con 500 filas | `clientes_barranquilla.xlsx` · 500 registros          |
+| Después, `clientes_cartagena.xlsx` con 320 | `clientes_cartagena.xlsx` · 320 registros, **aparte** |
+| Una tanda de 20 escritos a mano            | `Manual — 31/08/2026 08:45` · 20 registros            |
 
-Cada registro guarda además su propia fecha de creación y de última modificación, visibles en la tabla y presentes en la exportación.
+Cada archivo que cargas forma su propio grupo, incluso si es el mismo archivo dos veces. Los registros que escribes a mano seguidos van todos al mismo grupo; **Cerrar grupo** termina la tanda para que la siguiente forme otro.
 
-### 4. Búsqueda
+Cada tarjeta de grupo muestra el origen, el nombre, la cantidad, la fecha y en qué estado va su procesamiento. **Ver registros** abre la tabla completa ya filtrada por ese grupo, y **Borrar grupo** se lleva el grupo con todos sus registros.
+
+#### Configuración de geocodificación
+
+En la misma pantalla, porque se decide con los datos delante:
+
+| Ajuste                     | Por defecto | Para qué                                        |
+| -------------------------- | ----------- | ----------------------------------------------- |
+| Porcentaje mínimo de éxito | 40 %        | Por debajo de esto se reintenta automáticamente |
+| Máximo de reintentos       | 3           | Vueltas extra, después de la pasada inicial     |
+
+Acepta cualquier valor de 0 a 100 y de 0 a 10 reintentos, con validación. Se guarda y sobrevive a recargar la página.
+
+### 2. Procesamiento
 
 Muestra **exactamente** qué se va a consultar, registro por registro, antes de gastar una sola petición. Desde aquí se lanza la geocodificación, se detiene y se retoma.
 
-### 5. Revisión
+Cuando termina la pasada inicial de **todos** los registros, se mide el porcentaje de éxito. Si queda por debajo del mínimo, se reintentan solo los que no obtuvieron resultado y se vuelve a medir:
 
-Cola de los registros que necesitan una decisión humana. Para cada uno: datos originales, consulta usada, resultado, desglose del score, candidatos alternativos y un mapa. Puedes aceptar, rechazar, elegir otro candidato o marcar el punto a mano.
+```text
+Resultado inicial: 35 %
+El resultado quedó por debajo del mínimo configurado (40 %).
+Reintentando… intento 1 de 3
 
-En la lista de candidatos, **tocar una ficha lo enseña en el mapa** sin cambiar nada: el mapa vuela hasta él, la chincheta se resalta y la ficha queda marcada como «viendo». También funciona al revés: pinchar una chincheta marca su ficha. El registro solo cambia si pulsas **Usar este**; **Volver al actual** deshace la previsualización.
+Resultado: 48 %
+✓ Se alcanzó el porcentaje mínimo.
+```
 
-Al decidir, **el registro se queda a la vista** para que compruebes el resultado y puedas cambiar de opinión: el candidato elegido pasa a marcarse como «actual» y lo anterior queda en el historial. Cuando termines, **Siguiente pendiente** te lleva al próximo.
+Nunca es un girador a secas: la pantalla dice en qué vuelta va, cuánto lleva procesado, el porcentaje de cada intento y por qué se detuvo. Los tres motivos posibles son que se alcanzara el mínimo, que se agotaran los reintentos, o que **no quede nada que reintentar** porque los registros que faltan ya tienen un candidato y lo que necesitan es una decisión humana.
 
-### 6. Mapa
+Un registro que ya obtuvo candidato no se vuelve a pedir: la consulta sería idéntica y el proveedor devolvería lo mismo. Eso ahorra peticiones, tiempo y riesgo de tocar el límite del servicio.
+
+### 3. Revisión
+
+Rediseñada para trabajar, con el mapa como área principal:
+
+```text
+┌───────────────────────────────────────────────────────────┐
+│ 1.240 registros · 3 grupos · 87 % geocodificados          │
+│ Búsqueda: Colombia · Nominatim · acepta desde 80 %  [+]   │
+├──────────────┬────────────────────────────────────────────┤
+│ Filtros      │                                            │
+│ y cola       │                  MAPA                      │
+│ por grupo    │                                            │
+│              ├────────────────────────────────────────────┤
+│              │ Resultado │ Candidatos │ Datos originales   │
+└──────────────┴────────────────────────────────────────────┘
+```
+
+El contexto de la búsqueda cabe en dos líneas; el resto se despliega con **Ver configuración** y no ocupa sitio de forma permanente.
+
+A la izquierda, la cola **agrupada por origen**, con cabecera por grupo y filtros por grupo, por estado de geocodificación y por resultado. Abajo, en pestañas de alto fijo: el resultado con sus componentes geográficos separados, los candidatos, los datos originales y el historial.
+
+Puedes aceptar, rechazar, elegir otro candidato, marcar el punto a mano o volver a buscar. **Tocar una ficha de candidato lo enseña en el mapa** sin cambiar nada: el mapa vuela hasta él y la chincheta se resalta. También funciona al revés. El registro solo cambia si pulsas **Usar este**.
+
+Al decidir, **el registro se queda a la vista** para que compruebes el resultado y puedas cambiar de opinión. Cuando termines, **Siguiente pendiente** te lleva al próximo.
+
+### 4. Exportar
+
+Elige **qué grupos** exportar —todos, uno o varios—, qué registros (todos, solo los localizados, solo los verificados) y qué bloques de columnas incluir.
+
+El `.xlsx` **conserva todas las columnas del archivo original** y añade la información geográfica en columnas separadas, con nombres que se entienden:
+
+| Estado/Departamento | Municipio/Ciudad | Código ZIP | Dirección encontrada | Coordenadas           | Latitud | Longitud |
+| ------------------- | ---------------- | ---------- | -------------------- | --------------------- | ------: | -------: |
+| Atlántico           | Barranquilla     | 080001     | Calle 72 # 50-20     | -74.801200, 10.987800 | 10.9878 | -74.8012 |
+
+La columna `Coordenadas` va siempre en **longitud, latitud**, la misma convención en toda la aplicación. Latitud y longitud van además como números independientes. El código postal se escribe como texto para no perder el cero de delante.
+
+Después se añaden el resultado (estado, confianza, proveedor, consulta usada, verificación manual), el grupo de procedencia con su tipo y fecha, y la trazabilidad interna.
+
+### Mapa
 
 Todos los registros localizados en un solo mapa, que ocupa toda la pantalla junto a la lista.
 
@@ -90,17 +156,25 @@ Con muchos puntos las chinchetas se amontonan, así que **se agrupan por cercan�
 - **Pinchas un marcador** y se resalta su fila, pero el mapa no se mueve: así no pierdes la panorámica mientras comparas puntos.
 - **Ver todos** vuelve a encuadrar el conjunto completo.
 
-Se puede filtrar por lote, por verificados manualmente y por texto.
+Se puede filtrar por grupo, por verificados manualmente y por texto.
 
-### 7. Exportar
+### La tabla de registros
 
-Genera un `.xlsx` que **conserva todas las columnas del archivo original** y añade los campos normalizados, las columnas de resultado y la trazabilidad: lote de procedencia, fecha del lote, y fecha de creación y modificación de cada registro.
+Se llega desde **Ver registros** en una tarjeta de grupo. Tabla unificada con filtros por texto, grupo, origen y estado; edición en línea, duplicado y borrado. Cada registro muestra sus problemas de validación sin que nada se descarte, y guarda su fecha de creación y de última modificación.
+
+Tiene **la barra horizontal arriba** además de abajo, sincronizadas, y cabecera fija.
+
+### Espacio y accesibilidad
+
+En pantallas anchas las vistas de trabajo **ocupan exactamente la pantalla**: la página no se desplaza, se desplazan las listas y las tablas por dentro, así que los filtros y la cabecera nunca se pierden de vista. Por debajo de 1024 px las columnas se apilan y la página se desplaza con normalidad.
+
+Los estados **no dependen del color**: cada uno lleva su símbolo (`✓ Encontrado`, `⚠ Confianza baja`, `✕ No encontrado`, `○ Pendiente`). Todos los campos tienen etiqueta escrita, no solo texto de relleno. El foco es visible en todo lo que se puede usar, incluidos los desplegables y las pestañas, que se recorren con las flechas como un control nativo.
 
 ## Sobre la precisión
 
 La aplicación prefiere pedirte que revises antes que darte unas coordenadas equivocadas.
 
-Un caso real que ilustra por qué: buscar `Toks, Ciudad de Mexico` devuelve *algún* Toks de la cadena con todas las señales coincidiendo al 100%, porque nada en el registro distingue una sucursal de otra. En vez de aceptarlo, la confianza se limita al 75% y el registro entra en la cola de revisión con el motivo escrito.
+Un caso real que ilustra por qué: buscar `Toks, Ciudad de Mexico` devuelve _algún_ Toks de la cadena con todas las señales coincidiendo al 100%, porque nada en el registro distingue una sucursal de otra. En vez de aceptarlo, la confianza se limita al 75% y el registro entra en la cola de revisión con el motivo escrito.
 
 Las dos situaciones que fuerzan revisión:
 
@@ -111,12 +185,12 @@ Las dos situaciones que fuerzan revisión:
 
 ## Proveedores y límites
 
-| Proveedor | Papel | Límite |
-| --- | --- | --- |
-| Nominatim (OpenStreetMap) | Principal | **1 consulta por segundo**, impuesto por la aplicación |
-| Photon | Respaldo, opcional | Se activa en la pestaña Búsqueda |
+| Proveedor                 | Papel              | Límite                                                 |
+| ------------------------- | ------------------ | ------------------------------------------------------ |
+| Nominatim (OpenStreetMap) | Principal          | **1 consulta por segundo**, impuesto por la aplicación |
+| Photon                    | Respaldo, opcional | Se activa en la sección Procesamiento                  |
 
-Un lote de N registros tarda del orden de N a 4N segundos, porque cada registro puede necesitar varias estrategias. Las consultas repetidas salen de la cache y no cuestan nada.
+Un grupo de N registros tarda del orden de N a 4N segundos, porque cada registro puede necesitar varias estrategias. Las consultas repetidas salen de la cache y no cuestan nada.
 
 No se promete una tasa de acierto del 100%. Depende de la calidad de tus datos y de lo que exista en OpenStreetMap.
 
@@ -149,6 +223,6 @@ Hay un archivo de prueba en [`public/samples/ejemplo-tiendas.xlsx`](public/sampl
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — estructura del código y decisiones tomadas.
 - [PROJECT_STATUS.md](PROJECT_STATUS.md) — qué está hecho, qué se verificó y qué queda abierto.
-#   a a a 
- 
- 
+  #   a a a 
+   
+   

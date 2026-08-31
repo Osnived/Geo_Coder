@@ -42,7 +42,7 @@ export function ScoreBreakdown({ signals }: { signals: Readonly<Record<string, n
                 style={{ width: `${String(Math.round(value * 100))}%` }}
               />
             </span>
-            <span className="text-ink-faint w-9 text-right tabular-nums">
+            <span className="text-ink-muted w-9 text-right tabular-nums">
               {Math.round(value * 100)}%
             </span>
           </dd>

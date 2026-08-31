@@ -1,4 +1,7 @@
-import type { GeocodeQuery } from '../models/geocode'
+import { emptyComponents, type AddressComponents, type GeocodeQuery } from '../models/geocode'
+
+export { emptyComponents }
+export type { AddressComponents }
 
 /**
  * Puerto de geocodificacion (spec seccion 10).
@@ -6,30 +9,6 @@ import type { GeocodeQuery } from '../models/geocode'
  * El resto de la aplicacion trabaja contra esta interfaz, nunca contra
  * Nominatim, Photon o Google. Las implementaciones viven en `src/providers/`.
  */
-
-/** Componentes de direccion que devuelve el proveedor. '' = no informado. */
-export interface AddressComponents {
-  readonly street: string
-  readonly houseNumber: string
-  readonly city: string
-  readonly region: string
-  readonly postalCode: string
-  readonly country: string
-  /** ISO 3166-1 alpha-2 en mayusculas, o '' si el proveedor no lo da. */
-  readonly countryCode: string
-}
-
-export function emptyComponents(): AddressComponents {
-  return {
-    street: '',
-    houseNumber: '',
-    city: '',
-    region: '',
-    postalCode: '',
-    country: '',
-    countryCode: '',
-  }
-}
 
 /** Candidato crudo del proveedor, todavia sin puntuar por la aplicacion. */
 export interface ProviderCandidate {

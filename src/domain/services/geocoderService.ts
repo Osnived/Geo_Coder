@@ -1,9 +1,10 @@
 import type { Country } from '../models/country'
-import type {
-  GeocodeAttempt,
-  GeocodeCandidate,
-  GeocodeQuery,
-  GeocodeResult,
+import {
+  emptyComponents,
+  type GeocodeAttempt,
+  type GeocodeCandidate,
+  type GeocodeQuery,
+  type GeocodeResult,
 } from '../models/geocode'
 import type { EstablishmentRecord } from '../models/record'
 import type { RecordStatus } from '../models/status'
@@ -137,6 +138,7 @@ function toCandidate(
     provider,
     confidence,
     signals,
+    components: candidate.components,
     raw: candidate.raw,
   }
 }
@@ -160,6 +162,7 @@ function buildResult(
     confidence,
     queryUsed: query.text,
     manuallyVerified: false,
+    components: best.components ?? emptyComponents(),
     candidates,
     attempts,
     notes,

@@ -11,7 +11,13 @@ const INITIAL = useAppStore.getState()
 
 beforeEach(() => {
   setRepository(createInMemoryRepository())
-  useAppStore.setState({ ...INITIAL, records: [], country: null })
+  useAppStore.setState({
+    ...INITIAL,
+    records: [],
+    batches: [],
+    activeManualBatchId: null,
+    country: null,
+  })
 })
 
 describe('ManualEntryForm', () => {
@@ -45,5 +51,62 @@ describe('ManualEntryForm', () => {
 
     expect(screen.getByLabelText('Cliente / cadena')).toHaveValue('Olimpica')
     expect(screen.getByLabelText('Nombre del local')).toHaveValue('')
+  })
+
+  it('agrupa los registros de la sesion y lo dice al agregarlos', async () => {
+    const user = userEvent.setup()
+    render(<ManualEntryForm />)
+
+    await user.type(screen.getByLabelText('Nombre del local'), 'Toks Plaza')
+    await user.click(screen.getByRole('button', { name: 'Agregar registro' }))
+
+    // El aviso nombra el grupo, no solo dice "hecho".
+    expect(await screen.findByText(/Registro agregado al grupo Manual —/)).toBeInTheDocument()
+
+    await user.type(screen.getByLabelText('Nombre del local'), 'Toks Centro')
+    await user.click(screen.getByRole('button', { name: 'Agregar registro' }))
+
+    const { records, batches } = useAppStore.getState()
+    expect(records).toHaveLength(2)
+    expect(batches).toHaveLength(1)
+    expect(records[0]?.batchId).toBe(records[1]?.batchId)
+  })
+
+  it('muestra el grupo abierto con su recuento', async () => {
+    const user = userEvent.setup()
+    render(<ManualEntryForm />)
+
+    // Antes del primer registro no hay grupo que ensenar.
+    expect(screen.getByText(/El primer registro abrira un grupo nuevo/)).toBeInTheDocument()
+
+    await user.type(screen.getByLabelText('Nombre del local'), 'Toks Plaza')
+    await user.click(screen.getByRole('button', { name: 'Agregar registro' }))
+
+    expect(await screen.findByText(/Grupo abierto:/)).toBeInTheDocument()
+    expect(screen.getByText(/1 registro\(s\)/)).toBeInTheDocument()
+  })
+
+  it('cerrar el grupo hace que el siguiente registro abra otro', async () => {
+    const user = userEvent.setup()
+    render(<ManualEntryForm />)
+
+    await user.type(screen.getByLabelText('Nombre del local'), 'Toks Plaza')
+    await user.click(screen.getByRole('button', { name: 'Agregar registro' }))
+    const first = useAppStore.getState().activeManualBatchId
+
+    await user.click(await screen.findByRole('button', { name: 'Cerrar grupo' }))
+    expect(useAppStore.getState().activeManualBatchId).toBeNull()
+
+    await user.type(screen.getByLabelText('Nombre del local'), 'Toks Centro')
+    await user.click(screen.getByRole('button', { name: 'Agregar registro' }))
+
+    const records = useAppStore.getState().records
+    expect(useAppStore.getState().batches).toHaveLength(2)
+    expect(records[1]?.batchId).not.toBe(first)
+  })
+
+  it('sin grupo abierto no ofrece cerrarlo', () => {
+    render(<ManualEntryForm />)
+    expect(screen.queryByRole('button', { name: 'Cerrar grupo' })).not.toBeInTheDocument()
   })
 })

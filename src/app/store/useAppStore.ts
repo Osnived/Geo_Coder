@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 
 import type { NormalizedField } from '@/domain/models/fields'
-import { createExcelBatch, createManualBatch, manualBatchId } from '@/domain/models/batch'
+import { createExcelBatch, createManualBatch } from '@/domain/models/batch'
 import type { GeocodeQuery } from '@/domain/models/geocode'
 import type { EstablishmentRecord } from '@/domain/models/record'
 import type { RecordStatus } from '@/domain/models/status'
@@ -28,6 +28,13 @@ import {
   selectCandidate,
   setManualCoordinates,
 } from '@/domain/services/reviewService'
+import {
+  clampMaxRetries,
+  clampSuccessPercentage,
+  decideRetry,
+  DEFAULT_RETRY_SETTINGS,
+  summarizeAttempt,
+} from '@/domain/services/retryPolicy'
 import { createScorer } from '@/domain/services/scoringService'
 import {
   AMBIGUITY_DELTA,
@@ -39,7 +46,7 @@ import {
 import { DEFAULT_AI_SETTINGS, getAssistant, type AiSettings } from './assistant'
 import { getProviders } from './geocoder'
 import { getRepository } from './repository'
-import type { AppState } from './types'
+import type { AppState, GeocodingRound } from './types'
 
 /**
  * Estado de la aplicacion.
@@ -118,6 +125,7 @@ function persistSettings(state: AppState): void {
     country: state.country,
     requireCountry: state.requireCountry,
     useFallbackProvider: state.useFallbackProvider,
+    retry: state.retry,
     ai: state.ai,
     updatedAt: nowIso(),
   })
@@ -157,24 +165,23 @@ function normalizeOptions(state: Pick<AppState, 'country'>, batchId: string) {
 }
 
 /**
- * Devuelve el lote manual del dia, creandolo si hace falta.
+ * Devuelve el grupo manual de la sesion en curso, creandolo si hace falta.
  *
- * Un lote por dia y no por registro: agrupar de uno en uno seria ruido, y por
- * sesion no sobreviviria a una recarga.
+ * Un grupo por sesion de entrada y no por registro ni por dia: quien mete
+ * veinte tiendas seguidas esta creando un conjunto, no veinte. El grupo se
+ * cierra explicitamente con `closeManualGroup`, o al recargar la pagina.
  */
 async function ensureManualBatch(
   get: () => AppState,
   set: (partial: Partial<AppState>) => void,
 ): Promise<string> {
-  const timestamp = nowIso()
-  const id = manualBatchId(timestamp)
+  const active = get().activeManualBatchId
+  if (active !== null && get().batches.some((batch) => batch.id === active)) return active
 
-  if (get().batches.some((batch) => batch.id === id)) return id
-
-  const batch = createManualBatch(timestamp)
+  const batch = createManualBatch({ id: newId(), createdAt: nowIso() })
   await getRepository().saveBatch(batch)
-  set({ batches: [...get().batches, batch] })
-  return id
+  set({ batches: [...get().batches, batch], activeManualBatchId: batch.id })
+  return batch.id
 }
 
 function describeError(error: unknown): string {
@@ -194,11 +201,86 @@ function suggestionsFor(preview: SheetPreview) {
   return { mapping, displaced }
 }
 
+/**
+ * Una pasada completa sobre una lista de registros.
+ *
+ * Devuelve cuantos se procesaron. No decide nada sobre reintentos: eso lo hace
+ * `runGeocoding` cuando la pasada ha terminado, con el porcentaje ya a la vista.
+ */
+async function geocodePass(
+  targets: readonly EstablishmentRecord[],
+  get: () => AppState,
+  set: (partial: Partial<AppState> | ((state: AppState) => Partial<AppState>)) => void,
+  signal: AbortSignal,
+): Promise<number> {
+  const repository = getRepository()
+  let processed = 0
+
+  for (const target of targets) {
+    if (signal.aborted) break
+
+    set((state) => ({
+      geocoding: { ...state.geocoding, currentRecordId: target.id },
+    }))
+    // Estado visible mientras dura la peticion.
+    const searching = { ...target, status: 'SEARCHING' as const, updatedAt: nowIso() }
+    set((state) => ({
+      records: state.records.map((record) => (record.id === target.id ? searching : record)),
+    }))
+
+    const baseOptions = {
+      providers: getProviders(get().useFallbackProvider),
+      scorer: getScorer(),
+      thresholds: CONFIDENCE_THRESHOLDS,
+      caps: CONFIDENCE_CAPS,
+      ambiguityDelta: AMBIGUITY_DELTA,
+      now: nowIso,
+      sessionCountry: get().country,
+      signal,
+    }
+
+    let outcome = await geocodeRecord(target, baseOptions)
+
+    // Ultimo recurso: si las estrategias deterministas no dieron nada y el
+    // asistente esta activo, se prueban las alternativas que proponga.
+    if (outcome.status === 'NOT_FOUND' && get().ai.enabled) {
+      outcome = await retryWithAssistant(target, outcome, baseOptions, get().ai, signal)
+    }
+
+    // El registro pudo editarse mientras se buscaba: se relee antes de escribir.
+    const current = get().records.find((record) => record.id === target.id)
+    if (!current) continue
+
+    const updated = {
+      ...current,
+      status: outcome.status,
+      result: outcome.result,
+      updatedAt: nowIso(),
+    }
+    await repository.save(updated)
+
+    processed += 1
+    const failure = outcome.attempts.find((attempt) => attempt.error !== null)?.error ?? null
+
+    set((state) => ({
+      records: state.records.map((record) => (record.id === target.id ? updated : record)),
+      geocoding: {
+        ...state.geocoding,
+        processed,
+        lastError: failure ? failure.message : state.geocoding.lastError,
+      },
+    }))
+  }
+
+  return processed
+}
+
 export const useAppStore = create<AppState>()((set, get) => ({
   // ---------------------------------------------------------------- settings
   country: null,
   requireCountry: true,
   useFallbackProvider: false,
+  retry: DEFAULT_RETRY_SETTINGS,
 
   setCountry: (country) => {
     set({ country })
@@ -212,6 +294,19 @@ export const useAppStore = create<AppState>()((set, get) => ({
 
   setUseFallbackProvider: (useFallbackProvider) => {
     set({ useFallbackProvider })
+    persistSettings(get())
+  },
+
+  setRetrySettings: (settings) => {
+    const current = get().retry
+    set({
+      retry: {
+        minimumSuccessPercentage: clampSuccessPercentage(
+          settings.minimumSuccessPercentage ?? current.minimumSuccessPercentage,
+        ),
+        maxRetries: clampMaxRetries(settings.maxRetries ?? current.maxRetries),
+      },
+    })
     persistSettings(get())
   },
 
@@ -412,6 +507,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
   // ----------------------------------------------------------------- records
   records: [],
   batches: [],
+  activeManualBatchId: null,
   isHydrated: false,
   filters: { text: '', source: 'all', status: 'all', onlyWithIssues: false, batchId: 'all' },
 
@@ -429,6 +525,14 @@ export const useAppStore = create<AppState>()((set, get) => ({
       country: settings?.country ?? null,
       requireCountry: settings?.requireCountry ?? true,
       useFallbackProvider: settings?.useFallbackProvider ?? false,
+      retry: settings?.retry
+        ? {
+            minimumSuccessPercentage: clampSuccessPercentage(
+              settings.retry.minimumSuccessPercentage,
+            ),
+            maxRetries: clampMaxRetries(settings.retry.maxRetries),
+          }
+        : DEFAULT_RETRY_SETTINGS,
       ai: settings?.ai ?? DEFAULT_AI_SETTINGS,
     })
   },
@@ -442,6 +546,10 @@ export const useAppStore = create<AppState>()((set, get) => ({
     await getRepository().save(record)
     set({ records: [...state.records, record] })
     return record.id
+  },
+
+  closeManualGroup: () => {
+    set({ activeManualBatchId: null })
   },
 
   updateRecord: async (id, changes) => {
@@ -488,104 +596,145 @@ export const useAppStore = create<AppState>()((set, get) => ({
     set({
       records: get().records.filter((record) => record.batchId !== batchId),
       batches: get().batches.filter((batch) => batch.id !== batchId),
+      // Si se borro el grupo manual abierto, el siguiente registro abre otro.
+      ...(get().activeManualBatchId === batchId ? { activeManualBatchId: null } : {}),
     })
   },
 
   clearRecords: async () => {
     await getRepository().clear()
-    set({ records: [], batches: [] })
+    set({ records: [], batches: [], activeManualBatchId: null })
   },
 
   // --------------------------------------------------------------- geocoding
   geocoding: {
     isRunning: false,
+    phase: 'idle',
     processed: 0,
     total: 0,
     currentRecordId: null,
+    attempt: 0,
+    maxRetries: DEFAULT_RETRY_SETTINGS.maxRetries,
+    rounds: [],
+    percentage: 0,
+    stopReason: null,
     lastError: null,
   },
 
   runGeocoding: async (ids) => {
     if (get().geocoding.isRunning) return
 
-    const targets = selectTargets(get().records, ids)
-    if (targets.length === 0) return
+    const firstPass = selectTargets(get().records, ids)
+    if (firstPass.length === 0) return
 
     abortController?.abort()
     abortController = new AbortController()
     const { signal } = abortController
 
+    const settings = get().retry
+    /**
+     * El porcentaje se mide siempre sobre este conjunto, el de la pasada
+     * inicial, no sobre los que quedan por reintentar. Medirlo sobre los
+     * reintentos daria porcentajes que suben y bajan sin significar nada.
+     */
+    const scopeIds = firstPass.map((record) => record.id)
+
+    const currentScope = (): EstablishmentRecord[] => {
+      const byId = new Map(get().records.map((record) => [record.id, record]))
+      return scopeIds.flatMap((id) => {
+        const record = byId.get(id)
+        return record ? [record] : []
+      })
+    }
+
     set({
       geocoding: {
         isRunning: true,
+        phase: 'processing',
         processed: 0,
-        total: targets.length,
+        total: firstPass.length,
         currentRecordId: null,
+        attempt: 0,
+        maxRetries: settings.maxRetries,
+        rounds: [],
+        percentage: 0,
+        stopReason: null,
         lastError: null,
       },
     })
 
-    const repository = getRepository()
-    let processed = 0
+    const rounds: GeocodingRound[] = []
+    let targets = firstPass
+    let attempt = 0
+    let stopReason: 'threshold-met' | 'no-retries-left' | 'nothing-to-retry' | null = null
 
-    for (const target of targets) {
+    // Cada vuelta procesa su lista completa antes de decidir si hay otra.
+    for (;;) {
+      const processedInRound = await geocodePass(targets, get, set, signal)
       if (signal.aborted) break
 
-      set((state) => ({
-        geocoding: { ...state.geocoding, currentRecordId: target.id },
-      }))
-      // Estado visible mientras dura la peticion.
-      const searching = { ...target, status: 'SEARCHING' as const, updatedAt: nowIso() }
-      set((state) => ({
-        records: state.records.map((record) => (record.id === target.id ? searching : record)),
-      }))
+      const scope = currentScope()
+      const summary = summarizeAttempt(scope)
+      rounds.push({
+        attempt,
+        processed: processedInRound,
+        success: summary.success,
+        total: summary.total,
+        percentage: summary.percentage,
+      })
 
-      const baseOptions = {
-        providers: getProviders(get().useFallbackProvider),
-        scorer: getScorer(),
-        thresholds: CONFIDENCE_THRESHOLDS,
-        caps: CONFIDENCE_CAPS,
-        ambiguityDelta: AMBIGUITY_DELTA,
-        now: nowIso,
-        sessionCountry: get().country,
-        signal,
-      }
-
-      let outcome = await geocodeRecord(target, baseOptions)
-
-      // Ultimo recurso: si las estrategias deterministas no dieron nada y el
-      // asistente esta activo, se prueban las alternativas que proponga.
-      if (outcome.status === 'NOT_FOUND' && get().ai.enabled) {
-        outcome = await retryWithAssistant(target, outcome, baseOptions, get().ai, signal)
-      }
-
-      // El registro pudo editarse mientras se buscaba: se relee antes de escribir.
-      const current = get().records.find((record) => record.id === target.id)
-      if (!current) continue
-
-      const updated = {
-        ...current,
-        status: outcome.status,
-        result: outcome.result,
-        updatedAt: nowIso(),
-      }
-      await repository.save(updated)
-
-      processed += 1
-      const failure = outcome.attempts.find((attempt) => attempt.error !== null)?.error ?? null
+      const decision = decideRetry({
+        records: scope,
+        percentage: summary.percentage,
+        settings,
+        retriesUsed: attempt,
+      })
 
       set((state) => ({
-        records: state.records.map((record) => (record.id === target.id ? updated : record)),
         geocoding: {
           ...state.geocoding,
-          processed,
-          lastError: failure ? failure.message : state.geocoding.lastError,
+          rounds: [...rounds],
+          percentage: summary.percentage,
+        },
+      }))
+
+      if (!decision.retry) {
+        stopReason = decision.reason
+        break
+      }
+
+      attempt += 1
+      const wanted = new Set(decision.targetIds)
+      targets = scope.filter((record) => wanted.has(record.id))
+
+      set((state) => ({
+        geocoding: {
+          ...state.geocoding,
+          phase: 'retrying',
+          attempt,
+          processed: 0,
+          total: targets.length,
+          currentRecordId: null,
         },
       }))
     }
 
+    const finalSummary = summarizeAttempt(currentScope())
+
     set((state) => ({
-      geocoding: { ...state.geocoding, isRunning: false, currentRecordId: null },
+      geocoding: {
+        ...state.geocoding,
+        isRunning: false,
+        currentRecordId: null,
+        rounds: [...rounds],
+        percentage: finalSummary.percentage,
+        stopReason,
+        phase: signal.aborted
+          ? 'cancelled'
+          : finalSummary.percentage >= settings.minimumSuccessPercentage
+            ? 'completed'
+            : 'partial',
+      },
     }))
   },
 
@@ -609,7 +758,12 @@ export const useAppStore = create<AppState>()((set, get) => ({
   cancelGeocoding: () => {
     abortController?.abort()
     set((state) => ({
-      geocoding: { ...state.geocoding, isRunning: false, currentRecordId: null },
+      geocoding: {
+        ...state.geocoding,
+        isRunning: false,
+        phase: 'cancelled',
+        currentRecordId: null,
+      },
     }))
   },
 }))

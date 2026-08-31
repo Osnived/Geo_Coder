@@ -1,6 +1,38 @@
 import type { Country } from './country'
 import type { NormalizedField } from './fields'
 
+/**
+ * Componentes geograficos de una direccion, ya separados.
+ *
+ * Vive en el modelo y no en el puerto del proveedor porque el resultado los
+ * conserva: la exportacion necesita el estado, el municipio y el codigo postal
+ * en columnas propias, no dentro de una cadena formateada.
+ *
+ * '' = el proveedor no informo ese componente.
+ */
+export interface AddressComponents {
+  readonly street: string
+  readonly houseNumber: string
+  readonly city: string
+  readonly region: string
+  readonly postalCode: string
+  readonly country: string
+  /** ISO 3166-1 alpha-2 en mayusculas, o '' si el proveedor no lo da. */
+  readonly countryCode: string
+}
+
+export function emptyComponents(): AddressComponents {
+  return {
+    street: '',
+    houseNumber: '',
+    city: '',
+    region: '',
+    postalCode: '',
+    country: '',
+    countryCode: '',
+  }
+}
+
 /** Un candidato devuelto por un proveedor, antes de decidir si es correcto. */
 export interface GeocodeCandidate {
   readonly latitude: number
@@ -15,6 +47,8 @@ export interface GeocodeCandidate {
    * rechazo un candidato (spec principio 7).
    */
   readonly signals: Readonly<Record<string, number>>
+  /** Componentes geograficos separados, tal como los dio el proveedor. */
+  readonly components?: AddressComponents
   /** Payload crudo del proveedor, para trazabilidad. */
   readonly raw?: unknown
 }
@@ -38,6 +72,12 @@ export interface GeocodeResult {
   readonly confidence: number
   readonly queryUsed: string
   readonly manuallyVerified: boolean
+  /**
+   * Componentes geograficos del lugar encontrado. Se guardan aqui y no se
+   * recalculan desde `matchedAddress`: partir una cadena formateada es
+   * adivinar, y el proveedor ya los dio separados.
+   */
+  readonly components: AddressComponents
   /** Alternativas que devolvio el proveedor, para la pantalla de revision. */
   readonly candidates: readonly GeocodeCandidate[]
   /** Todo lo que se intento hasta llegar aqui (spec principio 7). */

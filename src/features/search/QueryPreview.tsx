@@ -9,7 +9,7 @@ import type { GeocodeQuery } from '@/domain/models/geocode'
 export function QueryPreview({ queries }: { queries: readonly GeocodeQuery[] }) {
   if (queries.length === 0) {
     return (
-      <p className="text-ink-faint text-xs italic">
+      <p className="text-ink-muted text-xs italic">
         Sin datos suficientes para construir una busqueda.
       </p>
     )
@@ -24,7 +24,7 @@ export function QueryPreview({ queries }: { queries: readonly GeocodeQuery[] }) 
           </Badge>
           <code className="text-ink font-mono">{query.text}</code>
           <span
-            className="text-ink-faint"
+            className="text-ink-muted"
             title={query.usedFields.map((field) => FIELD_LABELS[field]).join(' + ')}
           >
             ({query.usedFields.length} campo(s))

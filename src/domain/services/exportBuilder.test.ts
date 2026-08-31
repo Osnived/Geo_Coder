@@ -1,29 +1,20 @@
 import { describe, expect, it } from 'vitest'
 
-import { FIXED_NOW, makeRecord } from '@/test/factories'
+import { makeRecord, makeResult } from '@/test/factories'
 
-import type { GeocodeResult } from '../models/geocode'
+import type { ImportBatch } from '../models/batch'
+import { emptyComponents } from '../models/geocode'
 import type { EstablishmentRecord } from '../models/record'
 
-import { buildExport, collectOriginalColumns } from './exportBuilder'
+import {
+  buildExport,
+  collectOriginalColumns,
+  formatCoordinates,
+  GEO_COLUMNS,
+  selectForExport,
+} from './exportBuilder'
 
-function result(overrides: Partial<GeocodeResult> = {}): GeocodeResult {
-  return {
-    latitude: 11.0057,
-    longitude: -74.8139,
-    matchedName: 'Olimpica',
-    matchedAddress: 'Olimpica, Carrera 52, Barranquilla',
-    provider: 'nominatim',
-    confidence: 0.834,
-    queryUsed: 'Olimpica Prado, Barranquilla, Colombia',
-    manuallyVerified: false,
-    candidates: [],
-    attempts: [],
-    notes: [],
-    resolvedAt: '2026-03-01T00:00:00.000Z',
-    ...overrides,
-  }
-}
+const result = makeResult
 
 function imported(
   original: Record<string, unknown>,
@@ -36,6 +27,11 @@ function imported(
     original,
     ...overrides,
   }
+}
+
+/** Acceso por nombre de columna, que es como se lee una hoja de verdad. */
+function reader(sheet: { headers: readonly string[]; rows: readonly (readonly unknown[])[] }) {
+  return (column: string, row = 0) => sheet.rows[row]?.[sheet.headers.indexOf(column)]
 }
 
 describe('collectOriginalColumns', () => {
@@ -53,7 +49,17 @@ describe('collectOriginalColumns', () => {
   })
 })
 
-describe('buildExport', () => {
+describe('formatCoordinates', () => {
+  it('escribe longitud y despues latitud, con seis decimales', () => {
+    expect(formatCoordinates(10.9878, -74.8012)).toBe('-74.801200, 10.987800')
+  })
+
+  it('no pierde el signo de los valores negativos', () => {
+    expect(formatCoordinates(-33.4489, -70.6693)).toBe('-70.669300, -33.448900')
+  })
+})
+
+describe('buildExport: informacion original', () => {
   it('conserva las columnas originales al principio y en su orden', () => {
     const sheet = buildExport([imported({ CLIENTE: 'Olimpica', VENTAS: 15000 })])
 
@@ -63,55 +69,138 @@ describe('buildExport', () => {
 
   it('anade los campos normalizados ademas de los originales', () => {
     const sheet = buildExport([imported({ CLIENTE: 'OLIMPICA S.A.' })])
+    const value = reader(sheet)
 
-    const clientIndex = sheet.headers.indexOf('client')
-    expect(clientIndex).toBeGreaterThan(0)
     // El original se conserva aunque el normalizado se haya corregido.
     expect(sheet.rows[0]?.[0]).toBe('OLIMPICA S.A.')
-    expect(sheet.rows[0]?.[clientIndex]).toBe('Olimpica')
+    expect(value('Cliente / cadena')).toBe('Olimpica')
   })
 
-  it('anade las columnas de resultado que pide la especificacion', () => {
-    const sheet = buildExport([imported({ CLIENTE: 'Olimpica' })])
+  it('exporta registros manuales con sus campos aunque no tengan original', () => {
+    const manual = makeRecord({ client: 'Toks', location_name: 'Toks Plaza Universidad' })
+    const sheet = buildExport([imported({ CLIENTE: 'Olimpica' }), { ...manual, id: 'm-1' }])
+    const value = reader(sheet)
 
-    for (const column of [
-      'latitude',
-      'longitude',
-      'matched_name',
-      'matched_address',
-      'provider',
-      'confidence',
-      'status',
-      'query_used',
-      'manually_verified',
-    ]) {
+    expect(value('CLIENTE', 1)).toBe('')
+    expect(value('Cliente / cadena', 1)).toBe('Toks')
+    expect(value('Origen', 1)).toBe('Manual')
+  })
+
+  it('no pisa una columna original que ya se llame igual', () => {
+    const sheet = buildExport([imported({ Latitud: 'valor original' })])
+
+    expect(sheet.headers).toContain('Latitud')
+    expect(sheet.headers).toContain('Latitud (geo)')
+    expect(reader(sheet)('Latitud')).toBe('valor original')
+  })
+
+  it('permite quitar las columnas originales', () => {
+    const sheet = buildExport([imported({ CLIENTE: 'Olimpica' })], {
+      sections: { original: false },
+    })
+
+    expect(sheet.headers).not.toContain('CLIENTE')
+    expect(reader(sheet)('Cliente / cadena')).toBe('Olimpica')
+  })
+})
+
+describe('buildExport: columnas geograficas separadas', () => {
+  const located = imported(
+    { CLIENTE: 'Olimpica' },
+    {
+      status: 'FOUND',
+      result: result({
+        latitude: 10.9878,
+        longitude: -74.8012,
+        matchedAddress: 'Calle 72 # 50-20',
+        components: {
+          ...emptyComponents(),
+          region: 'Atlántico',
+          city: 'Barranquilla',
+          postalCode: '080001',
+          country: 'Colombia',
+          countryCode: 'CO',
+        },
+      }),
+    },
+  )
+
+  it('incluye las siete columnas geograficas con nombres legibles', () => {
+    const sheet = buildExport([located])
+
+    for (const column of GEO_COLUMNS) {
       expect(sheet.headers, `falta la columna ${column}`).toContain(column)
     }
   })
 
-  it('vuelca el resultado cuando existe', () => {
+  it('no usa nombres tecnicos del proveedor', () => {
+    const sheet = buildExport([located])
+
+    for (const technical of ['lat', 'lng', 'formatted_address', 'admin_level_1', 'postcode']) {
+      expect(sheet.headers).not.toContain(technical)
+    }
+  })
+
+  it('separa estado, municipio y codigo postal en columnas propias', () => {
+    const value = reader(buildExport([located]))
+
+    expect(value('Estado/Departamento')).toBe('Atlántico')
+    expect(value('Municipio/Ciudad')).toBe('Barranquilla')
+    expect(value('Código ZIP')).toBe('080001')
+    expect(value('Dirección encontrada')).toBe('Calle 72 # 50-20')
+  })
+
+  it('exporta latitud y longitud como numeros independientes', () => {
+    const value = reader(buildExport([located]))
+
+    expect(value('Latitud')).toBe(10.9878)
+    expect(value('Longitud')).toBe(-74.8012)
+  })
+
+  it('compone la columna de coordenadas como longitud, latitud', () => {
+    expect(reader(buildExport([located]))('Coordenadas')).toBe('-74.801200, 10.987800')
+  })
+
+  it('deja las columnas geograficas vacias si no hay resultado', () => {
+    const value = reader(buildExport([imported({ CLIENTE: 'Olimpica' })]))
+
+    for (const column of GEO_COLUMNS) {
+      expect(value(column), `la columna ${column} deberia estar vacia`).toBe('')
+    }
+  })
+
+  it('deja vacio el componente que el proveedor no informo', () => {
+    const partial = imported(
+      { CLIENTE: 'Olimpica' },
+      { status: 'FOUND', result: result({ components: emptyComponents() }) },
+    )
+    const value = reader(buildExport([partial]))
+
+    expect(value('Código ZIP')).toBe('')
+    // Pero las coordenadas si estan: son otra cosa.
+    expect(value('Latitud')).toBe(11.0057)
+  })
+
+  it('permite quitar el bloque geografico', () => {
+    const sheet = buildExport([located], { sections: { geographic: false } })
+
+    expect(sheet.headers).not.toContain('Coordenadas')
+    expect(sheet.headers).toContain('Resultado')
+  })
+})
+
+describe('buildExport: resultado de la busqueda', () => {
+  it('escribe el resultado en castellano, no el codigo interno', () => {
     const sheet = buildExport([
       imported({ CLIENTE: 'Olimpica' }, { status: 'FOUND', result: result() }),
     ])
-    const value = (column: string) => sheet.rows[0]?.[sheet.headers.indexOf(column)]
+    const value = reader(sheet)
 
-    expect(value('latitude')).toBe(11.0057)
-    expect(value('longitude')).toBe(-74.8139)
-    expect(value('matched_name')).toBe('Olimpica')
-    expect(value('provider')).toBe('nominatim')
-    expect(value('confidence')).toBe(83)
-    expect(value('status')).toBe('FOUND')
-    expect(value('query_used')).toBe('Olimpica Prado, Barranquilla, Colombia')
-    expect(value('manually_verified')).toBe('NO')
-  })
-
-  it('deja vacias las columnas de resultado si no hay resultado', () => {
-    const sheet = buildExport([imported({ CLIENTE: 'Olimpica' })])
-    const value = (column: string) => sheet.rows[0]?.[sheet.headers.indexOf(column)]
-
-    expect(value('latitude')).toBe('')
-    expect(value('confidence')).toBe('')
-    expect(value('status')).toBe('PENDING')
+    expect(value('Resultado')).toBe('Encontrado')
+    expect(value('Confianza (%)')).toBe(83)
+    expect(value('Proveedor')).toBe('nominatim')
+    expect(value('Consulta usada')).toBe('Olimpica Prado, Barranquilla, Colombia')
+    expect(value('Verificado manualmente')).toBe('NO')
   })
 
   it('marca la verificacion manual', () => {
@@ -122,43 +211,23 @@ describe('buildExport', () => {
       ),
     ])
 
-    expect(sheet.rows[0]?.[sheet.headers.indexOf('manually_verified')]).toBe('SI')
+    expect(reader(sheet)('Verificado manualmente')).toBe('SI')
   })
 
-  it('no pisa una columna original que ya se llame igual', () => {
-    const sheet = buildExport([imported({ latitude: 'valor original', client: 'texto' })])
+  it('informa del estado aunque no haya resultado', () => {
+    const value = reader(buildExport([imported({ CLIENTE: 'Olimpica' })]))
 
-    expect(sheet.headers).toContain('latitude')
-    expect(sheet.headers).toContain('latitude_geo')
-    expect(sheet.headers).toContain('client_geo')
-    expect(sheet.rows[0]?.[sheet.headers.indexOf('latitude')]).toBe('valor original')
+    expect(value('Resultado')).toBe('Pendiente')
+    expect(value('Confianza (%)')).toBe('')
   })
 
-  it('exporta registros manuales con sus campos aunque no tengan original', () => {
-    const manual = makeRecord({ client: 'Toks', location_name: 'Toks Plaza Universidad' })
-    const sheet = buildExport([imported({ CLIENTE: 'Olimpica' }), { ...manual, id: 'm-1' }])
-
-    const row = sheet.rows[1]
-    expect(row?.[sheet.headers.indexOf('CLIENTE')]).toBe('')
-    expect(row?.[sheet.headers.indexOf('client')]).toBe('Toks')
-    expect(row?.[sheet.headers.indexOf('source')]).toBe('manual')
+  it('permite quitar el bloque de resultado', () => {
+    const sheet = buildExport([imported({ CLIENTE: 'a' })], { sections: { result: false } })
+    expect(sheet.headers).not.toContain('Proveedor')
   })
+})
 
-  it('incluye el identificador interno para trazabilidad', () => {
-    const sheet = buildExport([imported({ CLIENTE: 'Olimpica' })])
-    expect(sheet.rows[0]?.[sheet.headers.indexOf('record_id')]).toBe('r-1')
-  })
-
-  it('permite exportar solo una seleccion', () => {
-    const sheet = buildExport(
-      [imported({ CLIENTE: 'a' }), imported({ CLIENTE: 'b' }, { id: 'r-2' })],
-      { onlyIds: ['r-2'] },
-    )
-
-    expect(sheet.rows).toHaveLength(1)
-    expect(sheet.rows[0]?.[0]).toBe('b')
-  })
-
+describe('buildExport: integridad de la hoja', () => {
   it('todas las filas tienen tantas celdas como cabeceras', () => {
     const sheet = buildExport([
       imported({ CLIENTE: 'a', VENTAS: 1 }),
@@ -171,49 +240,144 @@ describe('buildExport', () => {
     }
   })
 
+  it('sigue cuadrando con todos los bloques desactivados', () => {
+    const sheet = buildExport([imported({ CLIENTE: 'a' })], {
+      sections: { original: false, geographic: false, result: false, group: false },
+    })
+
+    expect(sheet.rows[0]).toHaveLength(sheet.headers.length)
+    // El identificador interno nunca se quita: es la vuelta al dato.
+    expect(sheet.headers).toContain('ID interno')
+  })
+
   it('devuelve solo cabeceras si no hay registros', () => {
     const sheet = buildExport([])
     expect(sheet.rows).toEqual([])
-    expect(sheet.headers).toContain('latitude')
+    expect(sheet.headers).toContain('Latitud')
+  })
+
+  it('incluye el identificador interno para trazabilidad', () => {
+    expect(reader(buildExport([imported({ CLIENTE: 'Olimpica' })]))('ID interno')).toBe('r-1')
   })
 })
 
-describe('lote y fechas en la exportacion', () => {
-  const BATCH = {
-    id: 'lote-test',
-    label: 'tiendas.xlsx',
-    source: 'excel' as const,
+describe('exportacion por grupo', () => {
+  const BARRANQUILLA: ImportBatch = {
+    id: 'g-1',
+    label: 'clientes_barranquilla.xlsx',
+    source: 'excel',
     sheetName: 'Hoja1',
     importedCount: 2,
     createdAt: '2026-03-01T10:00:00.000Z',
   }
+  const CARTAGENA: ImportBatch = {
+    id: 'g-2',
+    label: 'clientes_cartagena.xlsx',
+    source: 'excel',
+    sheetName: 'Hoja1',
+    importedCount: 1,
+    createdAt: '2026-03-02T10:00:00.000Z',
+  }
+  const MANUAL: ImportBatch = {
+    id: 'g-3',
+    label: 'Manual — 31/08/2026 08:45',
+    source: 'manual',
+    sheetName: null,
+    importedCount: 1,
+    createdAt: '2026-08-31T13:45:00.000Z',
+  }
 
-  it('anade las columnas de lote y de fecha', () => {
-    const sheet = buildExport([imported({ CLIENTE: 'Olimpica' })], { batches: [BATCH] })
+  const BATCHES = [BARRANQUILLA, CARTAGENA, MANUAL]
 
-    for (const column of ['batch', 'batch_created_at', 'created_at', 'updated_at']) {
-      expect(sheet.headers, `falta la columna ${column}`).toContain(column)
-    }
+  const records = [
+    imported({ CLIENTE: 'a' }, { id: 'r-1', batchId: 'g-1' }),
+    imported({ CLIENTE: 'b' }, { id: 'r-2', batchId: 'g-1' }),
+    imported({ CLIENTE: 'c' }, { id: 'r-3', batchId: 'g-2' }),
+    { ...makeRecord({ client: 'd' }), id: 'r-4', batchId: 'g-3' },
+  ]
+
+  it('sin filtro exporta todos los grupos', () => {
+    const sheet = buildExport(records, { batches: BATCHES })
+    expect(sheet.rows).toHaveLength(4)
   })
 
-  it('escribe el nombre del lote con su hoja y su fecha', () => {
-    const sheet = buildExport([imported({ CLIENTE: 'Olimpica' })], { batches: [BATCH] })
-    const value = (column: string) => sheet.rows[0]?.[sheet.headers.indexOf(column)]
-
-    expect(value('batch')).toBe('tiendas.xlsx · Hoja1')
-    expect(value('batch_created_at')).toBe('2026-03-01T10:00:00.000Z')
+  it('una lista de grupos vacia se trata como "todos"', () => {
+    const sheet = buildExport(records, { batches: BATCHES, groupIds: [] })
+    expect(sheet.rows).toHaveLength(4)
   })
 
-  it('escribe la fecha de creacion y de modificacion del registro', () => {
-    const sheet = buildExport([imported({ CLIENTE: 'Olimpica' })], { batches: [BATCH] })
-    const value = (column: string) => sheet.rows[0]?.[sheet.headers.indexOf(column)]
+  it('exporta exclusivamente los registros de un grupo', () => {
+    const sheet = buildExport(records, { batches: BATCHES, groupIds: ['g-1'] })
+    const ids = sheet.rows.map((row) => row[sheet.headers.indexOf('ID interno')])
 
-    expect(value('created_at')).toBe(FIXED_NOW)
-    expect(value('updated_at')).toBe(FIXED_NOW)
+    expect(ids).toEqual(['r-1', 'r-2'])
   })
 
-  it('cae en el id del lote si no se conoce su nombre', () => {
-    const sheet = buildExport([imported({ CLIENTE: 'Olimpica' })])
-    expect(sheet.rows[0]?.[sheet.headers.indexOf('batch')]).toBe('lote-test')
+  it('exporta varios grupos a la vez', () => {
+    const sheet = buildExport(records, { batches: BATCHES, groupIds: ['g-2', 'g-3'] })
+    const ids = sheet.rows.map((row) => row[sheet.headers.indexOf('ID interno')])
+
+    expect(ids).toEqual(['r-3', 'r-4'])
+  })
+
+  it('identifica el grupo de cada fila', () => {
+    const sheet = buildExport(records, { batches: BATCHES })
+    const value = reader(sheet)
+
+    expect(value('Grupo')).toBe('clientes_barranquilla.xlsx · Hoja1')
+    expect(value('Tipo de grupo')).toBe('Excel')
+    expect(value('Grupo', 3)).toBe('Manual — 31/08/2026 08:45')
+    expect(value('Tipo de grupo', 3)).toBe('Manual')
+  })
+
+  it('cae en el id del grupo si no se conoce su nombre', () => {
+    const sheet = buildExport([imported({ CLIENTE: 'x' }, { batchId: 'desconocido' })])
+    expect(reader(sheet)('Grupo')).toBe('desconocido')
+  })
+
+  it('permite quitar el bloque de grupo', () => {
+    const sheet = buildExport(records, { batches: BATCHES, sections: { group: false } })
+    expect(sheet.headers).not.toContain('Grupo')
+  })
+
+  it('combina filtro por grupo y por seleccion de registros', () => {
+    const sheet = buildExport(records, { groupIds: ['g-1'], onlyIds: ['r-2', 'r-3'] })
+    const ids = sheet.rows.map((row) => row[sheet.headers.indexOf('ID interno')])
+
+    expect(ids).toEqual(['r-2'])
+  })
+
+  it('las columnas originales se calculan sobre lo seleccionado', () => {
+    const sheet = buildExport(
+      [
+        imported({ SOLO_EN_G1: 'x' }, { id: 'r-1', batchId: 'g-1' }),
+        imported({ SOLO_EN_G2: 'y' }, { id: 'r-2', batchId: 'g-2' }),
+      ],
+      { groupIds: ['g-2'] },
+    )
+
+    expect(sheet.headers).not.toContain('SOLO_EN_G1')
+    expect(sheet.headers).toContain('SOLO_EN_G2')
+  })
+})
+
+describe('selectForExport', () => {
+  const records = [
+    imported({}, { id: 'a', batchId: 'g-1' }),
+    imported({}, { id: 'b', batchId: 'g-2' }),
+  ]
+
+  it('sin opciones devuelve todo', () => {
+    expect(selectForExport(records, {}).map((record) => record.id)).toEqual(['a', 'b'])
+  })
+
+  it('filtra por grupo', () => {
+    expect(selectForExport(records, { groupIds: ['g-2'] }).map((record) => record.id)).toEqual([
+      'b',
+    ])
+  })
+
+  it('un grupo inexistente no devuelve nada', () => {
+    expect(selectForExport(records, { groupIds: ['g-9'] })).toEqual([])
   })
 })

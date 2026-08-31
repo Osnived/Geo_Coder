@@ -60,7 +60,7 @@ export function ColumnMapper({
                 <td className="px-3 py-2">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="font-medium">
-                      {header || <span className="text-ink-faint italic">(sin encabezado)</span>}
+                      {header || <span className="text-ink-muted italic">(sin encabezado)</span>}
                     </span>
                     {emptyColumns.has(columnIndex) ? (
                       <Badge tone="warn" title="Ninguna fila tiene valor en esta columna">

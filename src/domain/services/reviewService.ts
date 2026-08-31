@@ -1,4 +1,4 @@
-import type { GeocodeCandidate, GeocodeResult } from '../models/geocode'
+import { emptyComponents, type GeocodeCandidate, type GeocodeResult } from '../models/geocode'
 import type { EstablishmentRecord } from '../models/record'
 
 /**
@@ -76,6 +76,7 @@ export function selectCandidate(
     confidence: candidate.confidence,
     queryUsed: previous?.queryUsed ?? '',
     manuallyVerified: true,
+    components: candidate.components ?? emptyComponents(),
     candidates: previous?.candidates ?? [candidate],
     attempts: previous?.attempts ?? [],
     notes: [],
@@ -108,6 +109,9 @@ export function setManualCoordinates(
     confidence: 1,
     queryUsed: previous?.queryUsed ?? '',
     manuallyVerified: true,
+    // Marcar un punto a mano no cambia de que lugar hablamos: se conservan los
+    // componentes del resultado anterior si los habia.
+    components: previous?.components ?? emptyComponents(),
     candidates: previous?.candidates ?? [],
     attempts: previous?.attempts ?? [],
     notes: [],

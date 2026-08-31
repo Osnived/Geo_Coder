@@ -12,16 +12,16 @@ export function PreviewTable({ preview }: { preview: SheetPreview }) {
       <table className="w-full border-collapse text-xs">
         <thead>
           <tr className="[&>th]:bg-surface-sunken [&>th]:sticky [&>th]:top-0 [&>th]:z-10">
-            <th className="text-ink-faint w-12 px-2 py-1.5 text-right font-medium">#</th>
+            <th className="text-ink-muted w-12 px-2 py-1.5 text-right font-medium">#</th>
             {preview.headers.map((header, index) => (
               <th
                 key={index}
                 className={cx(
                   'border-border-subtle border-l px-2 py-1.5 text-left font-semibold whitespace-nowrap',
-                  empty.has(index) && 'text-ink-faint italic',
+                  empty.has(index) && 'text-ink-muted italic',
                 )}
               >
-                {header || <span className="text-ink-faint">(sin encabezado)</span>}
+                {header || <span className="text-ink-muted">(sin encabezado)</span>}
               </th>
             ))}
           </tr>
@@ -29,7 +29,7 @@ export function PreviewTable({ preview }: { preview: SheetPreview }) {
         <tbody>
           {preview.sampleRows.map((row, rowIndex) => (
             <tr key={rowIndex} className="border-border-subtle border-t">
-              <td className="text-ink-faint px-2 py-1 text-right tabular-nums">
+              <td className="text-ink-muted px-2 py-1 text-right tabular-nums">
                 {preview.headerRowNumber + rowIndex + 1}
               </td>
               {preview.headers.map((_, columnIndex) => (

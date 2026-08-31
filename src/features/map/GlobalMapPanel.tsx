@@ -1,10 +1,10 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 
 import { useAppStore } from '@/app/store'
-import { Badge, Button, Callout, Panel, Select, TextInput } from '@/components/ui/primitives'
+import { Button, Callout, Field, Panel, Select, TextInput } from '@/components/ui/primitives'
 import { describeBatch, formatTimestamp, LEGACY_BATCH } from '@/domain/models/batch'
 import type { EstablishmentRecord } from '@/domain/models/record'
-import { STATUS_LABELS } from '@/domain/models/status'
+import { StatusBadge } from '@/components/ui/StatusBadge'
 import { canonicalize } from '@/domain/rules/text'
 import { cx } from '@/shared/cx'
 
@@ -16,17 +16,6 @@ import { LocationMap, type FlyTarget, type MapPoint } from './LocationMap'
  * La lista y el mapa son la misma seleccion vista de dos formas: elegir en la
  * lista resalta el punto, y pinchar el punto resalta la fila.
  */
-
-const STATUS_TONE = {
-  FOUND: 'ok',
-  MANUALLY_VERIFIED: 'ok',
-  LOW_CONFIDENCE: 'warn',
-  NEEDS_REVIEW: 'warn',
-  NOT_FOUND: 'danger',
-  ERROR: 'danger',
-  SEARCHING: 'accent',
-  PENDING: 'neutral',
-} as const
 
 /** A partir de aqui, agrupar aporta mas que estorba. */
 const AUTO_GROUP_FROM = 25
@@ -162,30 +151,33 @@ export function GlobalMapPanel() {
         }
       >
         <div className="flex min-h-0 flex-1 flex-col gap-2">
-          <TextInput
-            placeholder="Buscar..."
-            value={search}
-            onChange={(event) => {
-              setSearch(event.target.value)
-            }}
-          />
+          <Field label="Buscar registros">
+            <TextInput
+              type="search"
+              value={search}
+              onChange={(event) => {
+                setSearch(event.target.value)
+              }}
+            />
+          </Field>
 
-          <Select
-            aria-label="Filtrar por lote"
-            value={batchId}
-            onChange={(event) => {
-              setBatchId(event.target.value)
-              setSelectedId(null)
-              setFlyTo(null)
-            }}
-          >
-            <option value="all">Todos los lotes</option>
-            {batches.map((batch) => (
-              <option key={batch.id} value={batch.id}>
-                {describeBatch(batch)} — {formatTimestamp(batch.createdAt)}
-              </option>
-            ))}
-          </Select>
+          <Field label="Grupo">
+            <Select
+              value={batchId}
+              onChange={(event) => {
+                setBatchId(event.target.value)
+                setSelectedId(null)
+                setFlyTo(null)
+              }}
+            >
+              <option value="all">Todos los grupos</option>
+              {batches.map((batch) => (
+                <option key={batch.id} value={batch.id}>
+                  {describeBatch(batch)} — {formatTimestamp(batch.createdAt)}
+                </option>
+              ))}
+            </Select>
+          </Field>
 
           <label className="text-ink-muted flex items-center gap-1.5 text-sm">
             <input
@@ -219,8 +211,14 @@ export function GlobalMapPanel() {
                     )}
                   >
                     <span className="block truncate">{displayName(record)}</span>
-                    <span className="text-ink-faint block truncate text-xs">
-                      {batchLabel(record.batchId)} · {STATUS_LABELS[record.status]}
+                    <span className="text-ink-muted block truncate text-xs">
+                      {batchLabel(record.batchId)}
+                    </span>
+                    <span className="mt-0.5 block">
+                      <StatusBadge
+                        status={record.status}
+                        {...(record.result ? { confidence: record.result.confidence } : {})}
+                      />
                     </span>
                   </button>
                 </li>
@@ -230,7 +228,7 @@ export function GlobalMapPanel() {
         </div>
       </Panel>
 
-      <div className="flex min-h-0 flex-col gap-4">
+      <div className="flex flex-col gap-4 lg:min-h-0">
         <Panel
           fill
           title="Mapa"
@@ -241,9 +239,7 @@ export function GlobalMapPanel() {
           }
           actions={
             <>
-              {selected ? (
-                <Badge tone={STATUS_TONE[selected.status]}>{STATUS_LABELS[selected.status]}</Badge>
-              ) : null}
+              {selected ? <StatusBadge status={selected.status} /> : null}
               {visible.length > 1 ? (
                 <>
                   <label className="text-ink-muted flex items-center gap-1.5 text-sm whitespace-nowrap">
@@ -264,7 +260,7 @@ export function GlobalMapPanel() {
             </>
           }
         >
-          <div className="flex min-h-0 flex-1 flex-col gap-3">
+          <div className="flex min-h-72 flex-col gap-3 lg:min-h-0 lg:flex-1">
             {visible.length === 0 ? (
               <Callout tone="warn">
                 No hay nada que dibujar. Geocodifica registros o cambia los filtros.
@@ -286,12 +282,13 @@ export function GlobalMapPanel() {
               <div className="border-border-subtle shrink-0 rounded-md border px-3 py-2 text-xs">
                 <p className="text-sm font-medium">{displayName(selected)}</p>
                 <p className="text-ink-muted">{selected.result.matchedAddress}</p>
-                <p className="text-ink-faint mt-1 tabular-nums">
-                  {selected.result.latitude.toFixed(6)}, {selected.result.longitude.toFixed(6)} ·{' '}
+                <p className="text-ink-muted mt-1 tabular-nums">
+                  {/* longitud, latitud: la misma convencion que la exportacion. */}
+                  {selected.result.longitude.toFixed(6)}, {selected.result.latitude.toFixed(6)} ·{' '}
                   {Math.round(selected.result.confidence * 100)}% · {selected.result.provider}
                 </p>
-                <p className="text-ink-faint mt-1">
-                  Lote: {batchLabel(selected.batchId)} · creado{' '}
+                <p className="text-ink-muted mt-1">
+                  Grupo: {batchLabel(selected.batchId)} · creado{' '}
                   {formatTimestamp(selected.createdAt)}
                 </p>
               </div>

@@ -1,24 +1,33 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
+import { useNavigation } from '@/app/navigationContext'
 import { useAppStore } from '@/app/store'
-import { Badge, Button, Callout, Panel } from '@/components/ui/primitives'
-import { FIELD_LABELS, NORMALIZED_FIELDS } from '@/domain/models/fields'
-import type { GeocodeCandidate } from '@/domain/models/geocode'
+import { Button, Callout, EmptyState, Panel } from '@/components/ui/primitives'
+import { StatusBadge } from '@/components/ui/StatusBadge'
+import { describeBatch } from '@/domain/models/batch'
 import type { EstablishmentRecord } from '@/domain/models/record'
-import { STATUS_LABELS } from '@/domain/models/status'
-import { needsReview, resultHistory } from '@/domain/services/reviewService'
+import { needsReview } from '@/domain/services/reviewService'
 import { LocationMap, type FlyTarget, type MapPoint } from '@/features/map/LocationMap'
-
-import { buildReviewQueue, findNextPending } from './reviewQueue'
-import { ScoreBreakdown } from '@/features/results/ScoreBreakdown'
 import { cx } from '@/shared/cx'
+
+import { ReviewDetail } from './ReviewDetail'
+import {
+  DEFAULT_REVIEW_FILTERS,
+  filterForReview,
+  summarizeReview,
+  type ReviewFilters,
+} from './reviewFilters'
+import { buildReviewQueue, findNextPending } from './reviewQueue'
+import { ReviewQueueList } from './ReviewQueueList'
+import { ReviewSummaryBar } from './ReviewSummaryBar'
 
 /**
  * Pantalla de revision y correccion manual (spec secciones 15 y 16).
  *
- * Muestra los datos originales, lo que se busco, lo que se encontro y con que
- * confianza, y deja aceptar, rechazar, elegir otro candidato o marcar un punto
- * a mano sobre el mapa.
+ * Rediseno: el mapa es el area de trabajo y ocupa lo que sobra de la pantalla.
+ * A la izquierda, filtros y cola agrupada por origen; arriba, un resumen de dos
+ * lineas; abajo, el detalle en pestanas de alto fijo. Nada de esto desplaza la
+ * pagina: cada bloque se desplaza por dentro.
  */
 
 /** Centro por defecto cuando no hay ninguna coordenada: Bogota. */
@@ -33,31 +42,18 @@ function displayName(record: EstablishmentRecord): string {
   )
 }
 
-function OriginalData({ record }: { record: EstablishmentRecord }) {
-  const filled = NORMALIZED_FIELDS.filter((field) => record.fields[field].trim() !== '')
-
-  return (
-    <dl className="grid gap-x-4 gap-y-1 text-xs sm:grid-cols-2">
-      {filled.map((field) => (
-        <div key={field} className="flex gap-2">
-          <dt className="text-ink-muted w-36 shrink-0">{FIELD_LABELS[field]}</dt>
-          <dd className="font-medium">{record.fields[field]}</dd>
-        </div>
-      ))}
-    </dl>
-  )
-}
-
 export function ReviewPanel() {
   const records = useAppStore((state) => state.records)
+  const batches = useAppStore((state) => state.batches)
   const acceptResult = useAppStore((state) => state.acceptResult)
   const rejectResult = useAppStore((state) => state.rejectResult)
   const chooseCandidate = useAppStore((state) => state.chooseCandidate)
   const pickCoordinates = useAppStore((state) => state.pickCoordinates)
   const runGeocoding = useAppStore((state) => state.runGeocoding)
   const geocoding = useAppStore((state) => state.geocoding)
+  const { go } = useNavigation()
 
-  const [onlyPending, setOnlyPending] = useState(true)
+  const [filters, setFilters] = useState<ReviewFilters>(DEFAULT_REVIEW_FILTERS)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [pickMode, setPickMode] = useState(false)
   /**
@@ -68,29 +64,34 @@ export function ReviewPanel() {
   const [flyTo, setFlyTo] = useState<FlyTarget | null>(null)
   const flightNumber = useRef(0)
 
+  const matching = useMemo(() => filterForReview(records, filters), [records, filters])
+
   const queue = useMemo(
-    () => buildReviewQueue(records, { onlyPending, selectedId }),
-    [records, onlyPending, selectedId],
+    () => buildReviewQueue(matching, records, selectedId),
+    [matching, records, selectedId],
   )
 
-  const nextPending = useMemo(() => findNextPending(records, selectedId), [records, selectedId])
+  const summary = useMemo(() => summarizeReview(records), [records])
 
-  // Al entrar, o si el registro elegido desaparece (se borro, cambio el
-  // filtro), se pasa al primero de la cola.
+  const nextPending = useMemo(() => findNextPending(matching, selectedId), [matching, selectedId])
+
+  // Al entrar, o si el registro elegido desaparece, se pasa al primero.
   useEffect(() => {
     if (selectedId !== null && queue.some((record) => record.id === selectedId)) return
     setSelectedId(queue[0]?.id ?? null)
   }, [queue, selectedId])
 
   const selected = queue.find((record) => record.id === selectedId) ?? null
-
   const result = selected?.result ?? null
 
+  const groupLabel = useMemo(() => {
+    const batch = batches.find((entry) => entry.id === selected?.batchId)
+    return batch ? describeBatch(batch) : (selected?.batchId ?? '')
+  }, [batches, selected])
+
   /** True si ese candidato es el que esta puesto ahora mismo en el registro. */
-  const isChosen = (candidate: GeocodeCandidate): boolean =>
-    result !== null &&
-    candidate.latitude === result.latitude &&
-    candidate.longitude === result.longitude
+  const isChosenPoint = (latitude: number, longitude: number): boolean =>
+    result !== null && latitude === result.latitude && longitude === result.longitude
 
   /**
    * Todos los candidatos van al mapa, numerados igual que en la lista, para
@@ -101,14 +102,15 @@ export function ReviewPanel() {
     if (!result) return []
 
     const fromCandidates = result.candidates.map((candidate, index): MapPoint => {
+      const chosen = isChosenPoint(candidate.latitude, candidate.longitude)
       const label = `${String(index + 1)}. ${candidate.matchedName || '(sin nombre)'}`
       return {
         id: `candidate-${String(index)}`,
         latitude: candidate.latitude,
         longitude: candidate.longitude,
-        label: isChosen(candidate) ? `${label} — actual` : label,
+        label: chosen ? `${label} — actual` : label,
         detail: `${candidate.matchedAddress} · ${String(Math.round(candidate.confidence * 100))}%`,
-        selected: previewIndex === null ? isChosen(candidate) : previewIndex === index,
+        selected: previewIndex === null ? chosen : previewIndex === index,
       }
     })
 
@@ -151,9 +153,8 @@ export function ReviewPanel() {
   useEffect(() => {
     setPreviewIndex(null)
     setFlyTo(null)
+    setPickMode(false)
   }, [selectedId])
-
-  const previewed = previewIndex === null ? null : (result?.candidates[previewIndex] ?? null)
 
   const center = result
     ? { latitude: result.latitude, longitude: result.longitude }
@@ -161,87 +162,81 @@ export function ReviewPanel() {
 
   if (records.length === 0) {
     return (
-      <Panel title="Revision">
-        <p className="text-ink-muted text-sm">Todavia no hay registros que revisar.</p>
+      <Panel fill title="Revision">
+        <EmptyState
+          title="Todavia no hay registros que revisar"
+          hint="Carga datos y geocodificalos primero."
+        />
+        <div className="mt-3">
+          <Button
+            variant="primary"
+            onClick={() => {
+              go('data')
+            }}
+          >
+            Ir a Datos
+          </Button>
+        </div>
       </Panel>
     )
   }
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[18rem_1fr]">
-      <Panel
-        title={`Cola (${String(queue.length)})`}
-        description={onlyPending ? 'Registros que necesitan una decision.' : 'Todos con resultado.'}
-      >
-        <div className="flex flex-col gap-2">
-          <label className="text-ink-muted flex items-center gap-1.5 text-xs">
-            <input
-              type="checkbox"
-              checked={onlyPending}
-              onChange={(event) => {
-                setOnlyPending(event.target.checked)
-              }}
-            />
-            Solo los que necesitan revision
-          </label>
+    <div className="relative flex flex-col gap-3 lg:min-h-0 lg:flex-1">
+      <ReviewSummaryBar summary={summary} />
 
-          {queue.length === 0 ? (
-            <p className="text-ink-muted py-6 text-center text-sm">
-              Nada pendiente de revisar. Buen trabajo.
-            </p>
-          ) : (
-            <ul className="flex max-h-[32rem] flex-col gap-1 overflow-y-auto">
-              {queue.map((record) => (
-                <li key={record.id}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedId(record.id)
-                      setPickMode(false)
-                    }}
-                    className={cx(
-                      'w-full rounded-md px-2 py-1.5 text-left text-sm',
-                      record.id === selectedId
-                        ? 'bg-accent-soft text-accent'
-                        : 'hover:bg-surface-sunken',
-                    )}
-                  >
-                    <span className="block truncate">{displayName(record)}</span>
-                    <span className="text-ink-faint text-xs">
-                      {STATUS_LABELS[record.status]}
-                      {record.result
-                        ? ` · ${String(Math.round(record.result.confidence * 100))}%`
-                        : ''}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </Panel>
+      <div className="grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-[19rem_minmax(0,1fr)]">
+        <aside
+          aria-label="Cola de revision"
+          // Apilada tiene un alto propio acotado; en ancho, el de su columna.
+          className="border-border-subtle bg-surface flex max-h-[26rem] min-h-0 flex-col overflow-hidden rounded-lg border px-3 py-3 lg:max-h-none"
+        >
+          <ReviewQueueList
+            queue={queue}
+            filters={filters}
+            onFiltersChange={(changes) => {
+              setFilters((current) => ({ ...current, ...changes }))
+            }}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+          />
+        </aside>
 
-      {selected ? (
-        <div className="flex flex-col gap-4">
-          <Panel
-            title={displayName(selected)}
-            description="Datos originales del registro. No se modifican al revisar."
-            actions={<Badge tone="neutral">{STATUS_LABELS[selected.status]}</Badge>}
-          >
-            <OriginalData record={selected} />
-          </Panel>
+        {selected ? (
+          <div className="flex flex-col gap-3 lg:min-h-0">
+            {/* Cabecera de accion: quien es y que se puede hacer con el. */}
+            <div className="border-border-subtle bg-surface flex shrink-0 flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2">
+              <div className="min-w-0">
+                <p className="flex flex-wrap items-center gap-2 text-sm font-semibold">
+                  <span className="truncate">{displayName(selected)}</span>
+                  <StatusBadge
+                    status={selected.status}
+                    {...(result ? { confidence: result.confidence } : {})}
+                  />
+                </p>
+                <p className="text-ink-muted truncate text-xs">{groupLabel}</p>
+              </div>
 
-          <Panel
-            title="Resultado"
-            description={
-              selected.result
-                ? `Proveedor ${selected.result.provider} · confianza ${String(
-                    Math.round(selected.result.confidence * 100),
-                  )}%`
-                : 'Sin resultado todavia.'
-            }
-            actions={
-              <>
+              <div className="flex flex-wrap items-center gap-2">
+                {result ? (
+                  <>
+                    <Button variant="primary" onClick={() => void acceptResult(selected.id)}>
+                      <span aria-hidden="true">✓</span> Aceptar
+                    </Button>
+                    <Button variant="danger" onClick={() => void rejectResult(selected.id)}>
+                      <span aria-hidden="true">✕</span> Rechazar
+                    </Button>
+                  </>
+                ) : null}
+                <Button
+                  variant={pickMode ? 'primary' : 'secondary'}
+                  aria-pressed={pickMode}
+                  onClick={() => {
+                    setPickMode(!pickMode)
+                  }}
+                >
+                  {pickMode ? 'Cancelar marcado' : 'Marcar en el mapa'}
+                </Button>
                 <Button
                   disabled={geocoding.isRunning}
                   onClick={() => void runGeocoding([selected.id])}
@@ -250,94 +245,44 @@ export function ReviewPanel() {
                 </Button>
                 {nextPending ? (
                   <Button
-                    variant="primary"
                     onClick={() => {
                       setSelectedId(nextPending.id)
-                      setPickMode(false)
                     }}
                     title={displayName(nextPending)}
                   >
-                    Siguiente pendiente
+                    Siguiente pendiente →
                   </Button>
                 ) : null}
-              </>
-            }
-          >
-            <div className="flex flex-col gap-3">
-              {!needsReview(selected) && selected.result ? (
-                <Callout tone="accent">
-                  Este registro ya esta resuelto. Sigue aqui para que puedas comprobarlo o
-                  cambiarlo; pasa al siguiente cuando quieras.
-                </Callout>
-              ) : null}
+              </div>
+            </div>
 
-              {selected.result ? (
-                <>
-                  <div className="text-xs">
-                    <p className="font-medium">{selected.result.matchedName || '(sin nombre)'}</p>
-                    <p className="text-ink-muted">{selected.result.matchedAddress}</p>
-                    <p className="text-ink-faint mt-1 tabular-nums">
-                      {selected.result.latitude.toFixed(6)}, {selected.result.longitude.toFixed(6)}
-                    </p>
-                    <p className="text-ink-faint mt-1">
-                      Consulta usada: <code>{selected.result.queryUsed}</code>
-                    </p>
-                  </div>
+            {pickMode ? (
+              <Callout tone="accent">
+                Haz clic en el mapa para fijar las coordenadas. Quedara marcado como verificado
+                manualmente.
+              </Callout>
+            ) : null}
 
-                  {selected.result.notes.length > 0 ? (
-                    <Callout tone="warn">
-                      <ul className="list-inside list-disc">
-                        {selected.result.notes.map((note) => (
-                          <li key={note}>{note}</li>
-                        ))}
-                      </ul>
-                    </Callout>
-                  ) : null}
+            {!needsReview(selected) && result ? (
+              <Callout tone="ok">
+                Este registro ya esta resuelto. Sigue a la vista para que puedas comprobarlo o
+                cambiarlo; pasa al siguiente cuando quieras.
+              </Callout>
+            ) : null}
 
-                  <ScoreBreakdown signals={selected.result.candidates[0]?.signals ?? {}} />
-
-                  <div className="flex flex-wrap gap-2">
-                    <Button variant="primary" onClick={() => void acceptResult(selected.id)}>
-                      Aceptar
-                    </Button>
-                    <Button variant="danger" onClick={() => void rejectResult(selected.id)}>
-                      Rechazar
-                    </Button>
-                    <Button
-                      variant={pickMode ? 'primary' : 'secondary'}
-                      onClick={() => {
-                        setPickMode(!pickMode)
-                      }}
-                    >
-                      {pickMode ? 'Cancelar marcado' : 'Marcar punto en el mapa'}
-                    </Button>
-                  </div>
-                </>
-              ) : (
-                <div className="flex flex-wrap items-center gap-2">
-                  <Callout tone="warn">
-                    Este registro no tiene ubicacion. Puedes buscar de nuevo o marcar el punto a
-                    mano.
-                  </Callout>
-                  <Button
-                    variant={pickMode ? 'primary' : 'secondary'}
-                    onClick={() => {
-                      setPickMode(!pickMode)
-                    }}
-                  >
-                    {pickMode ? 'Cancelar marcado' : 'Marcar punto en el mapa'}
-                  </Button>
-                </div>
+            {/* El mapa se come todo el espacio que queda. */}
+            <div
+              className={cx(
+                // `flex flex-col` es lo que deja crecer al mapa: con `fill` se
+                // estira dentro de este contenedor. El alto minimo es lo que lo
+                // salva en apilado, donde no queda espacio que repartir y el
+                // mapa se dibujaba con 0 px de alto.
+                'flex min-h-72 flex-col rounded-md lg:min-h-0 lg:flex-1',
+                pickMode && 'ring-accent ring-2',
               )}
-
-              {pickMode ? (
-                <Callout tone="accent">
-                  Haz clic en el mapa para fijar las coordenadas. Quedara marcado como verificado
-                  manualmente.
-                </Callout>
-              ) : null}
-
+            >
               <LocationMap
+                fill
                 points={points}
                 center={center}
                 flyTo={flyTo}
@@ -355,122 +300,27 @@ export function ReviewPanel() {
                   : {})}
               />
             </div>
+
+            <ReviewDetail
+              record={selected}
+              previewIndex={previewIndex}
+              onPreview={preview}
+              onChoose={(index) => {
+                // Al elegirlo pasa a ser el actual: ya no se previsualiza nada.
+                setPreviewIndex(null)
+                void chooseCandidate(selected.id, index)
+              }}
+            />
+          </div>
+        ) : (
+          <Panel fill title="Sin seleccion">
+            <EmptyState
+              title="No hay nada seleccionado"
+              hint="Quita algun filtro para ver mas registros."
+            />
           </Panel>
-
-          {result && result.candidates.length > 1 ? (
-            <Panel
-              title={`Candidatos (${String(result.candidates.length)})`}
-              description="Toca uno para verlo en el mapa. Solo cambia el registro si pulsas 'Usar este'."
-              actions={
-                previewIndex !== null ? (
-                  <Button
-                    onClick={() => {
-                      preview(null)
-                    }}
-                  >
-                    Volver al actual
-                  </Button>
-                ) : undefined
-              }
-            >
-              <ul className="flex flex-col gap-2">
-                {result.candidates.map((candidate, index) => {
-                  const chosen = isChosen(candidate)
-                  const previewing = previewIndex === index
-
-                  return (
-                    <li
-                      key={`${String(candidate.latitude)}-${String(candidate.longitude)}-${String(index)}`}
-                      className={cx(
-                        'border-border-subtle flex flex-wrap items-center gap-2 rounded-md border px-2 py-2',
-                        chosen && 'bg-accent-soft/40',
-                        previewing && 'border-accent ring-accent/40 ring-2',
-                      )}
-                    >
-                      {/* La ficha entera previsualiza; usarlo es un boton aparte. */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          preview(index)
-                        }}
-                        aria-pressed={previewing}
-                        className="hover:bg-surface-sunken min-w-0 flex-1 rounded px-1 py-0.5 text-left text-xs"
-                        title="Ver este candidato en el mapa"
-                      >
-                        <p className="flex flex-wrap items-center gap-1.5 font-medium">
-                          <span className="text-ink-faint tabular-nums">{index + 1}.</span>
-                          {candidate.matchedName || '(sin nombre)'}
-                          {chosen ? <Badge tone="accent">actual</Badge> : null}
-                          {previewing ? <Badge tone="neutral">viendo</Badge> : null}
-                        </p>
-                        <p className="text-ink-muted truncate">{candidate.matchedAddress}</p>
-                        <p className="text-ink-faint tabular-nums">
-                          {candidate.latitude.toFixed(5)}, {candidate.longitude.toFixed(5)} ·{' '}
-                          {Math.round(candidate.confidence * 100)}%
-                        </p>
-                      </button>
-
-                      {chosen ? null : (
-                        <Button
-                          variant={previewing ? 'primary' : 'secondary'}
-                          onClick={() => {
-                            // Al elegirlo pasa a ser el actual: ya no se esta
-                            // "previsualizando" nada.
-                            setPreviewIndex(null)
-                            void chooseCandidate(selected.id, index)
-                          }}
-                        >
-                          Usar este
-                        </Button>
-                      )}
-                    </li>
-                  )
-                })}
-              </ul>
-
-              {previewed ? (
-                <div className="mt-3">
-                  <Callout tone="accent">
-                    Estas viendo <strong>{previewed.matchedName || '(sin nombre)'}</strong> en el
-                    mapa. El registro sigue apuntando al actual hasta que pulses &quot;Usar
-                    este&quot;.
-                  </Callout>
-                </div>
-              ) : null}
-            </Panel>
-          ) : null}
-
-          {resultHistory(selected.result).length > 0 || (selected.rejected?.length ?? 0) > 0 ? (
-            <Panel
-              title="Historial"
-              description="Resultados sustituidos o rechazados. Nada se pierde."
-            >
-              <ul className="text-ink-muted flex flex-col gap-1 text-xs">
-                {resultHistory(selected.result).map((previous, index) => (
-                  <li key={`prev-${String(index)}`}>
-                    Sustituido: {previous.matchedName || '(sin nombre)'} —{' '}
-                    {previous.latitude.toFixed(5)}, {previous.longitude.toFixed(5)} (
-                    {previous.provider}, {Math.round(previous.confidence * 100)}%)
-                  </li>
-                ))}
-                {(selected.rejected ?? []).map((previous, index) => (
-                  <li key={`rej-${String(index)}`}>
-                    Rechazado: {previous.matchedName || '(sin nombre)'} —{' '}
-                    {previous.latitude.toFixed(5)}, {previous.longitude.toFixed(5)} (
-                    {previous.provider})
-                  </li>
-                ))}
-              </ul>
-            </Panel>
-          ) : null}
-        </div>
-      ) : (
-        <Panel title="Revision">
-          <p className="text-ink-muted text-sm">
-            No hay nada seleccionado. Todo lo pendiente esta resuelto.
-          </p>
-        </Panel>
-      )}
+        )}
+      </div>
     </div>
   )
 }

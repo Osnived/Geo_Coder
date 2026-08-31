@@ -1,9 +1,16 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
+import { emptyComponents } from '@/domain/models/geocode'
+import type { GeocoderProvider, ProviderCandidate } from '@/domain/services/geocoderProvider'
+import { DEFAULT_RETRY_SETTINGS } from '@/domain/services/retryPolicy'
 import { createInMemoryRepository } from '@/infrastructure/storage'
 
+import { setProviders } from './geocoder'
 import { setRepository } from './repository'
-import { useAppStore } from './useAppStore'
+import { getScorer, setScorer, useAppStore } from './useAppStore'
+
+/** Puntuador real de la aplicacion, para restaurarlo tras cada test. */
+const REAL_SCORER = getScorer()
 
 /**
  * Recorrido completo del MVP 1 sobre el store: archivo -> hoja -> mapeo ->
@@ -47,8 +54,17 @@ beforeEach(() => {
     mapping: [],
     displacedColumns: {},
     importError: null,
+    activeManualBatchId: null,
+    retry: DEFAULT_RETRY_SETTINGS,
     filters: { text: '', source: 'all', status: 'all', onlyWithIssues: false, batchId: 'all' },
   })
+  setProviders(null)
+  setScorer(REAL_SCORER)
+})
+
+afterEach(() => {
+  setProviders(null)
+  setScorer(REAL_SCORER)
 })
 
 describe('flujo de importacion', () => {
@@ -205,7 +221,7 @@ describe('persistencia de la sesion', () => {
   })
 })
 
-describe('lotes', () => {
+describe('grupos', () => {
   it('cada importacion crea su lote con archivo, hoja y fecha', async () => {
     const file = await xlsxFile('tiendas.xlsx', {
       Tiendas: [
@@ -256,14 +272,85 @@ describe('lotes', () => {
     expect(useAppStore.getState().batches).toEqual([])
   })
 
-  it('los registros manuales del dia comparten un solo lote', async () => {
+  it('los registros de una sesion manual comparten un solo grupo', async () => {
     await useAppStore.getState().addManualRecord({ client: 'Toks' })
     await useAppStore.getState().addManualRecord({ client: 'Starbucks' })
+    await useAppStore.getState().addManualRecord({ client: 'Chedraui' })
 
     const { batches, records } = useAppStore.getState()
     expect(batches).toHaveLength(1)
     expect(batches[0]?.source).toBe('manual')
+    expect(batches[0]?.label).toMatch(/^Manual — /)
     expect(new Set(records.map((record) => record.batchId)).size).toBe(1)
+  })
+
+  it('cerrar el grupo manual abre otro con el siguiente registro', async () => {
+    await useAppStore.getState().addManualRecord({ client: 'Toks' })
+    const first = useAppStore.getState().activeManualBatchId
+
+    useAppStore.getState().closeManualGroup()
+    expect(useAppStore.getState().activeManualBatchId).toBeNull()
+
+    await useAppStore.getState().addManualRecord({ client: 'Starbucks' })
+    const second = useAppStore.getState().activeManualBatchId
+
+    expect(second).not.toBeNull()
+    expect(second).not.toBe(first)
+
+    const { batches, records } = useAppStore.getState()
+    expect(batches).toHaveLength(2)
+    expect(records[0]?.batchId).toBe(first)
+    expect(records[1]?.batchId).toBe(second)
+  })
+
+  it('un Excel no se mezcla con la sesion manual abierta', async () => {
+    await useAppStore.getState().addManualRecord({ client: 'Toks' })
+    const manualId = useAppStore.getState().activeManualBatchId
+
+    const file = csvFile('tiendas.csv', 'CLIENTE\nOlimpica\n')
+    await useAppStore.getState().openFile(file)
+    await useAppStore.getState().confirmImport()
+
+    const { records, batches } = useAppStore.getState()
+    expect(batches).toHaveLength(2)
+    const excel = records.find((record) => record.source === 'excel')
+    expect(excel?.batchId).not.toBe(manualId)
+  })
+
+  it('dos Excel distintos generan dos grupos con su propio nombre', async () => {
+    const barranquilla = csvFile('clientes_barranquilla.csv', 'CLIENTE\nOlimpica\nExito\n')
+    const cartagena = csvFile('clientes_cartagena.csv', 'CLIENTE\nOlimpica\n')
+
+    await useAppStore.getState().openFile(barranquilla)
+    await useAppStore.getState().confirmImport()
+    await useAppStore.getState().openFile(cartagena)
+    await useAppStore.getState().confirmImport()
+
+    const { batches, records } = useAppStore.getState()
+    expect(batches.map((batch) => batch.label)).toEqual([
+      'clientes_barranquilla.csv',
+      'clientes_cartagena.csv',
+    ])
+    expect(batches.map((batch) => batch.importedCount)).toEqual([2, 1])
+
+    const first = batches[0]
+    const second = batches[1]
+    expect(records.filter((record) => record.batchId === first?.id)).toHaveLength(2)
+    expect(records.filter((record) => record.batchId === second?.id)).toHaveLength(1)
+  })
+
+  it('borrar el grupo manual abierto no deja apuntando a un grupo inexistente', async () => {
+    await useAppStore.getState().addManualRecord({ client: 'Toks' })
+    const id = useAppStore.getState().activeManualBatchId
+    if (id === null) throw new Error('se esperaba un grupo manual abierto')
+
+    await useAppStore.getState().deleteBatch(id)
+
+    expect(useAppStore.getState().activeManualBatchId).toBeNull()
+
+    await useAppStore.getState().addManualRecord({ client: 'Starbucks' })
+    const next = useAppStore.getState().activeManualBatchId
+    expect(useAppStore.getState().batches.some((batch) => batch.id === next)).toBe(true)
   })
 
   it('cada registro guarda su fecha y hora de creacion', async () => {
@@ -306,5 +393,266 @@ describe('lotes', () => {
     await useAppStore.getState().hydrate()
 
     expect(useAppStore.getState().batches).toHaveLength(1)
+  })
+})
+
+/**
+ * Reintentos de la geocodificacion.
+ *
+ * Se inyecta un proveedor de mentira para poder decidir exactamente que
+ * encuentra y en que vuelta. Asi se prueba la logica del bucle —cuando
+ * reintenta, sobre que registros y cuando se rinde— sin salir a la red.
+ */
+describe('reintentos de la geocodificacion', () => {
+  /** Candidato con la forma que espera el dominio. */
+  function candidate(name: string): ProviderCandidate {
+    return {
+      latitude: 11,
+      longitude: -74.8,
+      name,
+      address: `${name}, Carrera 52, Barranquilla`,
+      components: { ...emptyComponents(), city: 'Barranquilla', region: 'Atlantico' },
+      category: 'supermarket',
+      rank: 0,
+      raw: {},
+    }
+  }
+
+  /**
+   * Proveedor que encuentra un registro solo a partir de la vuelta indicada.
+   *
+   * Responde unicamente a la estrategia 0 —la consulta mas especifica, la que
+   * lleva direccion— y devuelve vacio para el resto. Dos razones: asi cada
+   * vuelta cuenta exactamente un intento por registro, y un acierto llega con
+   * la consulta especifica, que es la unica que no queda limitada por el tope
+   * de poca especificidad y por tanto se acepta como FOUND.
+   *
+   * `foundFrom` mapea el nombre del local a la vuelta desde la que empieza a
+   * devolver resultado (1 = la pasada inicial). Ausente = nunca encuentra.
+   */
+  function scriptedProvider(foundFrom: Record<string, number>) {
+    /** Solo las consultas especificas: una por registro y por vuelta. */
+    const probes: string[] = []
+    const attempts = new Map<string, number>()
+
+    const provider: GeocoderProvider = {
+      name: 'falso',
+      requestsPerSecond: 1000,
+      search: (query) => {
+        if (query.strategy !== 0) return Promise.resolve([])
+        probes.push(query.text)
+
+        const key = Object.keys(foundFrom).find((name) => query.text.includes(name))
+        if (key === undefined) return Promise.resolve([])
+
+        const attempt = (attempts.get(key) ?? 0) + 1
+        attempts.set(key, attempt)
+
+        const threshold = foundFrom[key]
+        if (threshold === undefined || attempt < threshold) return Promise.resolve([])
+        return Promise.resolve([candidate(key)])
+      },
+    }
+
+    return { provider, probes }
+  }
+
+  /** Puntuador que acepta cualquier candidato: aisla el bucle del scoring. */
+  const alwaysAccept = () => ({ confidence: 1, signals: { location_name: 1 } })
+
+  /** Registros con direccion, para que la consulta cuente como especifica. */
+  async function seed(names: readonly string[]): Promise<void> {
+    for (const [index, name] of names.entries()) {
+      await useAppStore.getState().addManualRecord({
+        location_name: name,
+        address: `Carrera ${String(50 + index)}`,
+        city: 'Barranquilla',
+      })
+    }
+  }
+
+  it('no reintenta si la primera pasada alcanza el porcentaje minimo', async () => {
+    await seed(['Alfa', 'Beta'])
+    useAppStore.getState().setRetrySettings({ minimumSuccessPercentage: 40, maxRetries: 3 })
+
+    const { provider, probes } = scriptedProvider({ Alfa: 1, Beta: 1 })
+    setProviders([provider])
+    setScorer(alwaysAccept)
+
+    await useAppStore.getState().runGeocoding()
+
+    const { geocoding } = useAppStore.getState()
+    expect(geocoding.percentage).toBe(100)
+    expect(geocoding.rounds).toHaveLength(1)
+    expect(geocoding.attempt).toBe(0)
+    expect(geocoding.stopReason).toBe('threshold-met')
+    expect(geocoding.phase).toBe('completed')
+    // Dos registros, una consulta especifica cada uno: no se repitio nada.
+    expect(probes).toHaveLength(2)
+  })
+
+  it('el porcentaje justo en el minimo no dispara reintento', async () => {
+    await seed(['Alfa', 'Beta'])
+    useAppStore.getState().setRetrySettings({ minimumSuccessPercentage: 50, maxRetries: 3 })
+
+    setProviders([scriptedProvider({ Alfa: 1 }).provider])
+    setScorer(alwaysAccept)
+
+    await useAppStore.getState().runGeocoding()
+
+    const { geocoding } = useAppStore.getState()
+    expect(geocoding.percentage).toBe(50)
+    expect(geocoding.rounds).toHaveLength(1)
+    expect(geocoding.stopReason).toBe('threshold-met')
+  })
+
+  it('reintenta cuando el porcentaje queda por debajo del minimo', async () => {
+    await seed(['Alfa', 'Beta', 'Gamma', 'Delta'])
+    useAppStore.getState().setRetrySettings({ minimumSuccessPercentage: 50, maxRetries: 3 })
+
+    // Alfa entra a la primera; Beta solo a la segunda. 25% -> 50%.
+    setProviders([scriptedProvider({ Alfa: 1, Beta: 2 }).provider])
+    setScorer(alwaysAccept)
+
+    await useAppStore.getState().runGeocoding()
+
+    const { geocoding } = useAppStore.getState()
+    expect(geocoding.rounds.map((round) => round.percentage)).toEqual([25, 50])
+    expect(geocoding.stopReason).toBe('threshold-met')
+    expect(geocoding.phase).toBe('completed')
+  })
+
+  it('reintenta solo los registros que fallaron, no los ya resueltos', async () => {
+    await seed(['Alfa', 'Beta', 'Gamma', 'Delta'])
+    useAppStore.getState().setRetrySettings({ minimumSuccessPercentage: 50, maxRetries: 1 })
+
+    const { provider, probes } = scriptedProvider({ Alfa: 1 })
+    setProviders([provider])
+    setScorer(alwaysAccept)
+
+    await useAppStore.getState().runGeocoding()
+
+    // Alfa se consulto una vez en la pasada inicial y nunca mas.
+    expect(probes.filter((text) => text.includes('Alfa'))).toHaveLength(1)
+    // Los otros tres, una vez por vuelta: inicial + un reintento.
+    expect(probes.filter((text) => text.includes('Beta'))).toHaveLength(2)
+    expect(useAppStore.getState().geocoding.rounds[1]?.total).toBe(4)
+  })
+
+  it('respeta el maximo de reintentos y se rinde', async () => {
+    await seed(['Alfa', 'Beta'])
+    useAppStore.getState().setRetrySettings({ minimumSuccessPercentage: 90, maxRetries: 2 })
+
+    setProviders([scriptedProvider({}).provider])
+    setScorer(alwaysAccept)
+
+    await useAppStore.getState().runGeocoding()
+
+    const { geocoding } = useAppStore.getState()
+    // Pasada inicial + 2 reintentos.
+    expect(geocoding.rounds).toHaveLength(3)
+    expect(geocoding.attempt).toBe(2)
+    expect(geocoding.stopReason).toBe('no-retries-left')
+    expect(geocoding.phase).toBe('partial')
+    expect(geocoding.percentage).toBe(0)
+  })
+
+  it('con cero reintentos configurados no hay segunda vuelta', async () => {
+    await seed(['Alfa', 'Beta'])
+    useAppStore.getState().setRetrySettings({ minimumSuccessPercentage: 90, maxRetries: 0 })
+
+    const { provider, probes } = scriptedProvider({})
+    setProviders([provider])
+    setScorer(alwaysAccept)
+
+    await useAppStore.getState().runGeocoding()
+
+    expect(useAppStore.getState().geocoding.rounds).toHaveLength(1)
+    expect(useAppStore.getState().geocoding.stopReason).toBe('no-retries-left')
+    expect(probes).toHaveLength(2)
+  })
+
+  /**
+   * Un registro con candidato flojo no se reintenta: la consulta seria la misma
+   * y el proveedor devolveria lo mismo. Lo decide una persona en revision.
+   */
+  it('se detiene si lo que falta ya tiene candidato y solo espera decision', async () => {
+    await seed(['Alfa', 'Beta'])
+    useAppStore.getState().setRetrySettings({ minimumSuccessPercentage: 90, maxRetries: 3 })
+
+    setProviders([scriptedProvider({ Alfa: 1, Beta: 1 }).provider])
+    // Confianza intermedia: hay resultado, pero no se acepta solo.
+    setScorer(() => ({ confidence: 0.6, signals: { location_name: 0.6 } }))
+
+    await useAppStore.getState().runGeocoding()
+
+    const { geocoding, records } = useAppStore.getState()
+    expect(records.every((record) => record.result !== null)).toBe(true)
+    expect(geocoding.rounds).toHaveLength(1)
+    expect(geocoding.stopReason).toBe('nothing-to-retry')
+    expect(geocoding.phase).toBe('partial')
+  })
+
+  it('el porcentaje se mide sobre el conjunto inicial, no sobre los reintentos', async () => {
+    await seed(['Alfa', 'Beta', 'Gamma', 'Delta'])
+    useAppStore.getState().setRetrySettings({ minimumSuccessPercentage: 100, maxRetries: 1 })
+
+    setProviders([scriptedProvider({ Alfa: 1, Beta: 2 }).provider])
+    setScorer(alwaysAccept)
+
+    await useAppStore.getState().runGeocoding()
+
+    const rounds = useAppStore.getState().geocoding.rounds
+    // La segunda vuelta procesa 3 registros pero mide sobre los 4 del inicio.
+    expect(rounds[1]?.processed).toBe(3)
+    expect(rounds[1]?.total).toBe(4)
+    expect(rounds[1]?.percentage).toBe(50)
+  })
+
+  it('geocodificar una seleccion concreta solo mide y reintenta esa seleccion', async () => {
+    await seed(['Alfa', 'Beta'])
+    useAppStore.getState().setRetrySettings({ minimumSuccessPercentage: 90, maxRetries: 1 })
+
+    const { provider, probes } = scriptedProvider({})
+    setProviders([provider])
+    setScorer(alwaysAccept)
+
+    const target = useAppStore
+      .getState()
+      .records.find((record) => record.fields.location_name === 'Alfa')
+    if (!target) throw new Error('se esperaba el registro Alfa')
+
+    await useAppStore.getState().runGeocoding([target.id])
+
+    expect(useAppStore.getState().geocoding.rounds[0]?.total).toBe(1)
+    expect(probes.every((text) => text.includes('Alfa'))).toBe(true)
+  })
+
+  it('guarda los componentes geograficos del resultado', async () => {
+    await seed(['Alfa'])
+    setProviders([scriptedProvider({ Alfa: 1 }).provider])
+    setScorer(alwaysAccept)
+
+    await useAppStore.getState().runGeocoding()
+
+    const result = useAppStore.getState().records[0]?.result
+    expect(result?.components.city).toBe('Barranquilla')
+    expect(result?.components.region).toBe('Atlantico')
+  })
+
+  it('los ajustes de reintento se acotan y sobreviven a la rehidratacion', async () => {
+    useAppStore.getState().setRetrySettings({ minimumSuccessPercentage: 250, maxRetries: -5 })
+    expect(useAppStore.getState().retry).toEqual({
+      minimumSuccessPercentage: 100,
+      maxRetries: 0,
+    })
+
+    useAppStore.setState({ retry: DEFAULT_RETRY_SETTINGS })
+    await useAppStore.getState().hydrate()
+
+    expect(useAppStore.getState().retry).toEqual({
+      minimumSuccessPercentage: 100,
+      maxRetries: 0,
+    })
   })
 })

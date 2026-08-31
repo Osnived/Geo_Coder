@@ -102,6 +102,7 @@ describe.each(makeRepositories())('RecordRepository (%s)', (_name, make) => {
       country: { name: 'Colombia', code: 'CO' },
       requireCountry: true,
       useFallbackProvider: true,
+      retry: { minimumSuccessPercentage: 55, maxRetries: 2 },
       ai: { enabled: false, endpoint: 'http://localhost:11434', model: 'llama3.1' },
       updatedAt: '2026-01-01T00:00:00.000Z',
     })
@@ -110,6 +111,7 @@ describe.each(makeRepositories())('RecordRepository (%s)', (_name, make) => {
     expect(settings?.country).toEqual({ name: 'Colombia', code: 'CO' })
     expect(settings?.requireCountry).toBe(true)
     expect(settings?.useFallbackProvider).toBe(true)
+    expect(settings?.retry).toEqual({ minimumSuccessPercentage: 55, maxRetries: 2 })
     expect(settings?.ai?.model).toBe('llama3.1')
   })
 })

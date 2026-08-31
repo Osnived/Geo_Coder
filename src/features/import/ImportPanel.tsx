@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-import { Button, Callout, Field, Panel, Select } from '@/components/ui/primitives'
+import { Button, Callout, Field, Section, Select } from '@/components/ui/primitives'
 import { FIELD_LABELS } from '@/domain/models/fields'
 import { useAppStore } from '@/app/store'
 import { ColumnMapper } from '@/features/column-mapping/ColumnMapper'
@@ -11,13 +11,19 @@ import { FileDropzone } from './FileDropzone'
 import { TemplateButton } from './TemplateButton'
 import { PreviewTable } from './PreviewTable'
 
+/**
+ * Flujo de importacion: archivo -> hoja -> encabezados -> mapeo.
+ *
+ * Se monta dentro de la pestana "Carga masiva" de la vista Datos, asi que no
+ * lleva tarjeta propia: cada paso es una seccion del mismo panel.
+ */
+
 function previewDescription(preview: SheetPreview): string {
   const skipped = preview.totalDataRows - preview.nonBlankDataRows
   const base = `${String(preview.totalDataRows)} fila(s) de datos, se muestran las primeras ${String(preview.sampleRows.length)}.`
   return skipped > 0 ? `${base} ${String(skipped)} fila(s) en blanco no generaran registro.` : base
 }
 
-/** Flujo completo de importacion: archivo -> hoja -> encabezados -> mapeo. */
 export function ImportPanel() {
   const {
     fileName,
@@ -52,10 +58,10 @@ export function ImportPanel() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <Panel
+    <div className="flex flex-col gap-5">
+      <Section
         title="1. Archivo"
-        description="Los datos se procesan en tu navegador. Nada se envia a ningun servidor."
+        description="Cada archivo que cargues forma su propio grupo de registros."
         actions={
           <>
             <TemplateButton />
@@ -88,30 +94,24 @@ export function ImportPanel() {
           />
         )}
 
-        {importError ? (
-          <div className="mt-3">
-            <Callout tone="danger">{importError}</Callout>
-          </div>
-        ) : null}
+        {importError ? <Callout tone="danger">{importError}</Callout> : null}
 
         {!fileName ? (
-          <p className="text-ink-muted mt-3 text-xs">
+          <p className="text-ink-muted text-xs">
             ¿No sabes como estructurar el archivo? Descarga la plantilla: trae los encabezados que
             la aplicacion reconoce sola, filas de ejemplo y una hoja con instrucciones.
           </p>
         ) : null}
 
         {lastImported !== null && lastImported > 0 ? (
-          <div className="mt-3">
-            <Callout tone="accent">
-              Se agregaron {lastImported} registro(s). Revisalos en la pestana Registros.
-            </Callout>
-          </div>
+          <Callout tone="ok">
+            {lastImported} registro(s) cargados. Ya estan en el grupo de la derecha.
+          </Callout>
         ) : null}
-      </Panel>
+      </Section>
 
       {sheets.length > 0 ? (
-        <Panel
+        <Section
           title="2. Hoja"
           description="Elige la hoja y confirma cual fila trae los encabezados."
         >
@@ -150,21 +150,21 @@ export function ImportPanel() {
                     const value = Number(event.target.value)
                     if (Number.isInteger(value) && value >= 1) setHeaderRow(value)
                   }}
-                  className="border-border-subtle bg-surface w-full rounded-md border px-2.5 py-1.5 text-sm"
+                  className="border-border-subtle bg-surface text-ink w-full rounded-md border px-2.5 py-1.5 text-sm tabular-nums"
                 />
               </Field>
             ) : null}
           </div>
-        </Panel>
+        </Section>
       ) : null}
 
       {preview ? (
         <>
-          <Panel title="3. Vista previa" description={previewDescription(preview)}>
+          <Section title="3. Vista previa" description={previewDescription(preview)}>
             <PreviewTable preview={preview} />
-          </Panel>
+          </Section>
 
-          <Panel
+          <Section
             title="4. Mapeo de columnas"
             description="La deteccion automatica es una sugerencia: revisa y corrige lo que haga falta."
             actions={
@@ -194,24 +194,20 @@ export function ImportPanel() {
             />
 
             {aiApplied !== null ? (
-              <div className="mt-3">
-                <Callout tone={aiApplied > 0 ? 'accent' : 'warn'}>
-                  {aiApplied > 0
-                    ? `El asistente resolvio ${String(aiApplied)} columna(s). Revisalas: siguen siendo sugerencias.`
-                    : 'El asistente no pudo resolver ninguna columna.'}
-                </Callout>
-              </div>
+              <Callout tone={aiApplied > 0 ? 'accent' : 'warn'}>
+                {aiApplied > 0
+                  ? `El asistente resolvio ${String(aiApplied)} columna(s). Revisalas: siguen siendo sugerencias.`
+                  : 'El asistente no pudo resolver ninguna columna.'}
+              </Callout>
             ) : null}
 
             {mappedCount === 0 ? (
-              <div className="mt-3">
-                <Callout tone="warn">
-                  No hay ninguna columna mapeada. Los registros se importarian vacios.
-                </Callout>
-              </div>
+              <Callout tone="warn">
+                No hay ninguna columna mapeada. Los registros se importarian vacios.
+              </Callout>
             ) : null}
 
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="mt-1 flex flex-wrap items-center justify-between gap-3">
               <p className="text-ink-muted text-xs">
                 {mappedCount} de {mapping.length} columnas mapeadas a:{' '}
                 {mapping
@@ -223,7 +219,7 @@ export function ImportPanel() {
                 Agregar {preview.nonBlankDataRows} registro(s)
               </Button>
             </div>
-          </Panel>
+          </Section>
         </>
       ) : null}
     </div>

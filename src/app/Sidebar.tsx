@@ -1,5 +1,6 @@
 import { useAppStore } from '@/app/store'
 import { CountrySelector } from '@/features/settings/CountrySelector'
+import { needsReview } from '@/domain/services/reviewService'
 import { cx } from '@/shared/cx'
 
 import { TAB_GROUPS, type Tab } from './tabs'
@@ -7,9 +8,13 @@ import { TAB_GROUPS, type Tab } from './tabs'
 /**
  * Navegacion lateral.
  *
- * Va a la izquierda y no arriba porque la aplicacion es de trabajo con tablas
- * y mapas anchos: en horizontal, las ocho secciones se comian una franja de
- * alto util en todas las pantallas.
+ * Va a la izquierda y no arriba porque la aplicacion es de trabajo con tablas y
+ * mapas anchos: en horizontal, las secciones se comian una franja de alto util
+ * en todas las pantallas.
+ *
+ * Las entradas siguen el flujo —datos, procesamiento, revision, exportacion— y
+ * llevan el recuento de lo que queda por hacer en cada etapa, para que se vea
+ * donde esta el trabajo sin entrar a mirar.
  */
 
 export function Sidebar({
@@ -23,20 +28,24 @@ export function Sidebar({
   open: boolean
 }) {
   const recordCount = useAppStore((state) => state.records.length)
-  const needsReview = useAppStore(
+  const pending = useAppStore(
     (state) =>
-      state.records.filter(
-        (record) =>
-          record.status === 'LOW_CONFIDENCE' ||
-          record.status === 'NEEDS_REVIEW' ||
-          record.status === 'NOT_FOUND' ||
-          record.status === 'ERROR',
-      ).length,
+      state.records.filter((record) => record.status === 'PENDING' || record.status === 'ERROR')
+        .length,
+  )
+  const toReview = useAppStore(
+    (state) => state.records.filter((record) => needsReview(record)).length,
+  )
+  const located = useAppStore(
+    (state) => state.records.filter((record) => record.result !== null).length,
   )
 
   const badgeFor = (id: Tab): number | null => {
-    if (id === 'records') return recordCount || null
-    if (id === 'review') return needsReview || null
+    if (id === 'data') return recordCount || null
+    if (id === 'search') return pending || null
+    if (id === 'review') return toReview || null
+    if (id === 'mapa') return located || null
+    if (id === 'export') return recordCount || null
     return null
   }
 
@@ -58,15 +67,17 @@ export function Sidebar({
         </p>
       </div>
 
-      <nav className="min-h-0 flex-1 overflow-y-auto px-2 py-3">
+      <nav aria-label="Secciones" className="min-h-0 flex-1 overflow-y-auto px-2 py-3">
         {TAB_GROUPS.map((group) => (
           <div key={group.name} className="mb-3">
-            <p className="text-ink-faint px-2 pb-1 text-[0.65rem] font-medium tracking-wide uppercase">
+            <p className="text-ink-muted px-2 pb-1 text-[0.65rem] font-semibold tracking-wide uppercase">
               {group.name}
             </p>
             <ul className="flex flex-col gap-0.5">
               {group.tabs.map((entry) => {
                 const badge = badgeFor(entry.id)
+                const active = tab === entry.id
+
                 return (
                   <li key={entry.id}>
                     <button
@@ -74,10 +85,11 @@ export function Sidebar({
                       onClick={() => {
                         onSelect(entry.id)
                       }}
-                      aria-current={tab === entry.id ? 'page' : undefined}
+                      aria-current={active ? 'page' : undefined}
+                      title={entry.hint}
                       className={cx(
                         'flex w-full items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors',
-                        tab === entry.id
+                        active
                           ? 'bg-accent text-white'
                           : 'text-ink-muted hover:bg-surface-sunken hover:text-ink',
                       )}
@@ -87,7 +99,7 @@ export function Sidebar({
                         <span
                           className={cx(
                             'rounded px-1.5 py-0.5 text-xs tabular-nums',
-                            tab === entry.id ? 'bg-white/20' : 'bg-surface-sunken text-ink-muted',
+                            active ? 'bg-white/25' : 'bg-surface-sunken text-ink-muted',
                           )}
                         >
                           {badge}

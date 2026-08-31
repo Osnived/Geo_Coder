@@ -1,23 +1,13 @@
 import { useMemo, useState } from 'react'
 
 import { useAppStore } from '@/app/store'
-import { Badge, Button, Callout, Panel, Select, TextInput } from '@/components/ui/primitives'
+import { Badge, Button, Callout, Field, Panel, Select, TextInput } from '@/components/ui/primitives'
 import { describeBatch, formatTimestamp, LEGACY_BATCH } from '@/domain/models/batch'
 import { FIELD_LABELS, type NormalizedField } from '@/domain/models/fields'
 import type { EstablishmentRecord } from '@/domain/models/record'
 import { RECORD_STATUSES, STATUS_LABELS } from '@/domain/models/status'
+import { StatusBadge } from '@/components/ui/StatusBadge'
 
-/** Color de cada estado en la tabla. */
-const STATUS_TONE = {
-  FOUND: 'ok',
-  MANUALLY_VERIFIED: 'ok',
-  LOW_CONFIDENCE: 'warn',
-  NEEDS_REVIEW: 'warn',
-  NOT_FOUND: 'danger',
-  ERROR: 'danger',
-  SEARCHING: 'accent',
-  PENDING: 'neutral',
-} as const
 import {
   summarizeValidation,
   validateRecord,
@@ -26,7 +16,6 @@ import {
 
 import { ScrollableTable } from '@/components/ui/ScrollableTable'
 
-import { BatchList } from './BatchList'
 import { filterRecords } from './filterRecords'
 
 /** Columnas visibles en la tabla, en orden. */
@@ -162,7 +151,7 @@ export function RecordsTable() {
   return (
     <Panel
       fill
-      title={`Registros normalizados (${String(records.length)})`}
+      title={`Registros (${String(records.length)})`}
       description="Excel y entrada manual comparten el mismo modelo. Los datos originales se conservan intactos."
       actions={
         records.length > 0 ? (
@@ -179,63 +168,69 @@ export function RecordsTable() {
       }
     >
       <div className="flex min-h-0 flex-1 flex-col gap-3">
-        <BatchList />
-
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
-          <div className="min-w-40 flex-1">
-            <TextInput
-              placeholder="Buscar en cualquier campo..."
-              value={filters.text}
-              onChange={(event) => {
-                setFilters({ text: event.target.value })
-              }}
-            />
+        <div className="flex shrink-0 flex-wrap items-end gap-2">
+          <div className="min-w-48 flex-1">
+            <Field label="Buscar en cualquier campo">
+              <TextInput
+                type="search"
+                value={filters.text}
+                onChange={(event) => {
+                  setFilters({ text: event.target.value })
+                }}
+              />
+            </Field>
           </div>
 
-          <Select
-            aria-label="Filtrar por lote"
-            className="min-w-0 max-w-56 flex-1"
-            value={filters.batchId}
-            onChange={(event) => {
-              setFilters({ batchId: event.target.value })
-            }}
-          >
-            <option value="all">Todos los lotes</option>
-            {batches.map((batch) => (
-              <option key={batch.id} value={batch.id}>
-                {describeBatch(batch)} — {formatTimestamp(batch.createdAt)}
-              </option>
-            ))}
-          </Select>
+          <div className="min-w-44 flex-1 sm:max-w-64">
+            <Field label="Grupo">
+              <Select
+                value={filters.batchId}
+                onChange={(event) => {
+                  setFilters({ batchId: event.target.value })
+                }}
+              >
+                <option value="all">Todos los grupos</option>
+                {batches.map((batch) => (
+                  <option key={batch.id} value={batch.id}>
+                    {describeBatch(batch)} — {formatTimestamp(batch.createdAt)}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </div>
 
-          <Select
-            aria-label="Filtrar por origen"
-            className="min-w-0 max-w-36 flex-1"
-            value={filters.source}
-            onChange={(event) => {
-              setFilters({ source: event.target.value as typeof filters.source })
-            }}
-          >
-            <option value="all">Todos los origenes</option>
-            <option value="excel">Importados</option>
-            <option value="manual">Manuales</option>
-          </Select>
+          <div className="min-w-36 flex-1 sm:max-w-40">
+            <Field label="Origen">
+              <Select
+                value={filters.source}
+                onChange={(event) => {
+                  setFilters({ source: event.target.value as typeof filters.source })
+                }}
+              >
+                <option value="all">Todos los origenes</option>
+                <option value="excel">Excel</option>
+                <option value="manual">Manual</option>
+              </Select>
+            </Field>
+          </div>
 
-          <Select
-            aria-label="Filtrar por estado"
-            className="min-w-0 max-w-44 flex-1"
-            value={filters.status}
-            onChange={(event) => {
-              setFilters({ status: event.target.value as typeof filters.status })
-            }}
-          >
-            <option value="all">Todos los estados</option>
-            {RECORD_STATUSES.map((status) => (
-              <option key={status} value={status}>
-                {STATUS_LABELS[status]}
-              </option>
-            ))}
-          </Select>
+          <div className="min-w-40 flex-1 sm:max-w-48">
+            <Field label="Estado">
+              <Select
+                value={filters.status}
+                onChange={(event) => {
+                  setFilters({ status: event.target.value as typeof filters.status })
+                }}
+              >
+                <option value="all">Todos los estados</option>
+                {RECORD_STATUSES.map((status) => (
+                  <option key={status} value={status}>
+                    {STATUS_LABELS[status]}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </div>
 
           <label className="text-ink-muted flex shrink-0 items-center gap-1.5 text-sm whitespace-nowrap">
             <input
@@ -307,7 +302,7 @@ export function RecordsTable() {
                       {FIELD_LABELS[field]}
                     </th>
                   ))}
-                  <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Lote</th>
+                  <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Grupo</th>
                   <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Creado</th>
                   <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Coordenadas</th>
                   <th className="px-2 py-2 text-left font-medium">Estado</th>
@@ -347,7 +342,7 @@ export function RecordsTable() {
                           className="max-w-56 truncate px-2 py-1.5"
                           title={record.fields[field]}
                         >
-                          {record.fields[field] || <span className="text-ink-faint">—</span>}
+                          {record.fields[field] || <span className="text-ink-muted">—</span>}
                         </td>
                       ))}
                       <td
@@ -366,16 +361,14 @@ export function RecordsTable() {
                             {record.result.longitude.toFixed(5)}
                           </span>
                         ) : (
-                          <span className="text-ink-faint">—</span>
+                          <span className="text-ink-muted">—</span>
                         )}
                       </td>
                       <td className="px-2 py-1.5">
-                        <Badge tone={STATUS_TONE[record.status]}>
-                          {STATUS_LABELS[record.status]}
-                          {record.result
-                            ? ` ${String(Math.round(record.result.confidence * 100))}%`
-                            : ''}
-                        </Badge>
+                        <StatusBadge
+                          status={record.status}
+                          {...(record.result ? { confidence: record.result.confidence } : {})}
+                        />
                       </td>
                       <td className="px-2 py-1.5">
                         <ValidationCell record={record} options={validationOptions} />
@@ -423,7 +416,7 @@ export function RecordsTable() {
         ) : null}
 
         {records.length > 0 ? (
-          <p className="text-ink-faint shrink-0 text-xs">
+          <p className="text-ink-muted shrink-0 text-xs">
             Mostrando {visible.length} de {records.length}. Origen:{' '}
             {records.filter((record) => record.source === 'excel').length} importados,{' '}
             {records.filter((record) => record.source === 'manual').length} manuales.

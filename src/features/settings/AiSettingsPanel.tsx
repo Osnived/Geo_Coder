@@ -28,7 +28,7 @@ export function AiSettingsPanel() {
           />
           <span>
             Activar asistente
-            <span className="text-ink-faint block text-xs">
+            <span className="text-ink-muted block text-xs">
               Se usa solo en dos sitios: interpretar columnas que la deteccion automatica no
               reconocio, y proponer busquedas alternativas cuando un registro no se encuentra. Nunca
               sustituye a una regla determinista.

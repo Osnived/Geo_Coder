@@ -3,6 +3,7 @@ import Dexie, { type Table } from 'dexie'
 import type { Country } from '@/domain/models/country'
 import type { ImportBatch } from '@/domain/models/batch'
 import type { EstablishmentRecord } from '@/domain/models/record'
+import type { RetrySettings } from '@/domain/services/retryPolicy'
 
 /**
  * Persistencia local en IndexedDB (spec seccion 12 y 23 > Persistencia).
@@ -16,6 +17,8 @@ export interface SessionSettings {
   readonly country: Country | null
   readonly requireCountry: boolean
   readonly useFallbackProvider?: boolean
+  /** Ausente en sesiones guardadas antes de existir los reintentos. */
+  readonly retry?: RetrySettings
   readonly ai?: { enabled: boolean; endpoint: string; model: string }
   readonly updatedAt: string
 }
