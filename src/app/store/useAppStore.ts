@@ -361,6 +361,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
   displacedColumns: {},
   isLoadingFile: false,
   importError: null,
+  importDefaults: {},
 
   openFile: async (file) => {
     set({ isLoadingFile: true, importError: null })
@@ -374,6 +375,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
         preview: null,
         mapping: [],
         displacedColumns: {},
+        importDefaults: {},
         isLoadingFile: false,
       })
 
@@ -392,6 +394,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
         preview: null,
         mapping: [],
         displacedColumns: {},
+        importDefaults: {},
       })
     }
   },
@@ -454,6 +457,10 @@ export const useAppStore = create<AppState>()((set, get) => ({
     set({ mapping, displacedColumns: displaced })
   },
 
+  setImportDefault: (field, value) => {
+    set({ importDefaults: { ...get().importDefaults, [field]: value } })
+  },
+
   clearImport: () =>
     set({
       workbook: null,
@@ -463,6 +470,8 @@ export const useAppStore = create<AppState>()((set, get) => ({
       preview: null,
       mapping: [],
       displacedColumns: {},
+      // Los valores por defecto son de la carga que se acaba de cerrar.
+      importDefaults: {},
       importError: null,
     }),
 
@@ -478,7 +487,10 @@ export const useAppStore = create<AppState>()((set, get) => ({
 
       // Cada importacion es un lote propio, aunque se repita el mismo archivo.
       const batchId = newId()
-      const { records } = normalizeSheet(sheet, state.mapping, normalizeOptions(state, batchId))
+      const { records } = normalizeSheet(sheet, state.mapping, {
+        ...normalizeOptions(state, batchId),
+        defaults: state.importDefaults,
+      })
       if (records.length === 0) return 0
 
       const batch = createExcelBatch({

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 
 import { Button, Callout, Field, Section, Select } from '@/components/ui/primitives'
 import { FIELD_LABELS } from '@/domain/models/fields'
@@ -7,6 +7,8 @@ import { ColumnMapper } from '@/features/column-mapping/ColumnMapper'
 
 import type { SheetPreview } from '@/infrastructure/excel'
 
+import { analyzeDefaultableFields } from './defaultableFields'
+import { DefaultValueFields } from './DefaultValueFields'
 import { FileDropzone } from './FileDropzone'
 import { TemplateButton } from './TemplateButton'
 import { PreviewTable } from './PreviewTable'
@@ -39,6 +41,8 @@ export function ImportPanel() {
     setHeaderRow,
     setColumnField,
     resetMappingToSuggestion,
+    importDefaults,
+    setImportDefault,
     clearImport,
     confirmImport,
     ai,
@@ -50,6 +54,11 @@ export function ImportPanel() {
   const [aiApplied, setAiApplied] = useState<number | null>(null)
 
   const mappedCount = mapping.filter((field) => field !== null).length
+
+  const defaultable = useMemo(
+    () => (preview ? analyzeDefaultableFields(preview, mapping) : []),
+    [preview, mapping],
+  )
 
   const handleConfirm = async () => {
     const count = await confirmImport()
@@ -206,6 +215,13 @@ export function ImportPanel() {
                 No hay ninguna columna mapeada. Los registros se importarian vacios.
               </Callout>
             ) : null}
+
+            <DefaultValueFields
+              statuses={defaultable}
+              defaults={importDefaults}
+              recordCount={preview.nonBlankDataRows}
+              onChange={setImportDefault}
+            />
 
             <div className="mt-1 flex flex-wrap items-center justify-between gap-3">
               <p className="text-ink-muted text-xs">

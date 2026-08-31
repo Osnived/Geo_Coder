@@ -252,3 +252,127 @@ describe('updateRecordFields', () => {
     expect(updated.original.CIUDAD).toBe('Barranquilla')
   })
 })
+
+describe('valores por defecto de una carga', () => {
+  const SHEET: SheetData = {
+    fileName: 'tiendas.xlsx',
+    sheetName: 'Hoja1',
+    headers: ['NOMBRE', 'CIUDAD'],
+    headerRowNumber: 1,
+    rows: [
+      ['Olimpica Prado', 'Barranquilla'],
+      ['Olimpica Calle 72', 'Barranquilla'],
+    ],
+  }
+  const MAPPING = ['location_name', 'city'] as const
+
+  it('rellena el cliente en todos los registros de la carga', () => {
+    const { records } = normalizeSheet(SHEET, MAPPING, {
+      ...testOptions(),
+      defaults: { client: 'Olimpica' },
+    })
+
+    expect(records.map((record) => record.fields.client)).toEqual(['Olimpica', 'Olimpica'])
+  })
+
+  it('rellena tambien el tipo de establecimiento', () => {
+    const { records } = normalizeSheet(SHEET, MAPPING, {
+      ...testOptions(),
+      defaults: { business_type: 'supermercado' },
+    })
+
+    expect(records[0]?.fields.business_type).toBe('supermercado')
+  })
+
+  /** Principio 2: los datos de entrada no se modifican. */
+  it('no pisa el valor que si trae la fila', () => {
+    const sheet: SheetData = {
+      ...SHEET,
+      headers: ['CLIENTE', 'NOMBRE'],
+      rows: [
+        ['Exito', 'Exito Country'],
+        ['', 'Olimpica Prado'],
+      ],
+    }
+
+    const { records } = normalizeSheet(sheet, ['client', 'location_name'], {
+      ...testOptions(),
+      defaults: { client: 'Olimpica' },
+    })
+
+    // La primera fila conserva el suyo; la segunda recibe el valor por defecto.
+    expect(records.map((record) => record.fields.client)).toEqual(['Exito', 'Olimpica'])
+  })
+
+  it('no toca los datos originales del archivo', () => {
+    const { records } = normalizeSheet(SHEET, MAPPING, {
+      ...testOptions(),
+      defaults: { client: 'Olimpica' },
+    })
+
+    // La fila cruda no tenia columna de cliente y sigue sin tenerla.
+    expect(Object.keys(records[0]?.original ?? {})).toEqual(['NOMBRE', 'CIUDAD'])
+  })
+
+  it('un valor por defecto vacio no hace nada', () => {
+    const { records } = normalizeSheet(SHEET, MAPPING, {
+      ...testOptions(),
+      defaults: { client: '   ' },
+    })
+
+    expect(records[0]?.fields.client).toBe('')
+  })
+
+  it('normaliza los espacios del valor escrito a mano', () => {
+    const { records } = normalizeSheet(SHEET, MAPPING, {
+      ...testOptions(),
+      defaults: { client: '  Olimpica   S.A.  ' },
+    })
+
+    expect(records[0]?.fields.client).toBe('Olimpica S.A.')
+  })
+
+  it('sin defaults se comporta como antes', () => {
+    const { records } = normalizeSheet(SHEET, MAPPING, testOptions())
+
+    expect(records[0]?.fields.client).toBe('')
+  })
+
+  it('convive con el pais por defecto', () => {
+    const { records } = normalizeSheet(SHEET, MAPPING, {
+      ...testOptions(),
+      defaultCountry: { name: 'Colombia', code: 'CO' },
+      defaults: { client: 'Olimpica' },
+    })
+
+    expect(records[0]?.fields.client).toBe('Olimpica')
+    expect(records[0]?.fields.country).toBe('Colombia')
+  })
+
+  it('las filas en blanco siguen sin generar registro', () => {
+    const sheet: SheetData = {
+      ...SHEET,
+      rows: [
+        ['', ''],
+        ['Olimpica Prado', 'Barranquilla'],
+      ],
+    }
+    const { records, skippedBlankRows } = normalizeSheet(sheet, MAPPING, {
+      ...testOptions(),
+      defaults: { client: 'Olimpica' },
+    })
+
+    // Un valor por defecto no debe resucitar una fila vacia.
+    expect(records).toHaveLength(1)
+    expect(skippedBlankRows).toHaveLength(1)
+  })
+
+  it('tambien aplica a la entrada manual', () => {
+    const record = normalizeManualEntry(
+      { location_name: 'Olimpica Prado' },
+      { ...testOptions(), defaults: { client: 'Olimpica' } },
+    )
+
+    expect(record.fields.client).toBe('Olimpica')
+  })
+})

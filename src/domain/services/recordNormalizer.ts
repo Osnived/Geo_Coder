@@ -29,6 +29,21 @@ export interface SheetData {
  */
 export type ColumnAssignment = readonly (NormalizedField | null)[]
 
+/**
+ * Campos que admiten un valor por defecto para toda una carga.
+ *
+ * Solo los que se repiten igual en un archivo entero: la cadena a la que
+ * pertenecen las tiendas y su tipo de establecimiento. `location_name` queda
+ * fuera a proposito: darle el mismo nombre a todas las sucursales destruiria lo
+ * unico que permite distinguirlas, que es de donde salen los topes de
+ * confianza.
+ */
+export const DEFAULTABLE_FIELDS = ['client', 'business_type'] as const
+
+export type DefaultableField = (typeof DEFAULTABLE_FIELDS)[number]
+
+export type FieldDefaults = Partial<Record<DefaultableField, string>>
+
 export interface NormalizeOptions {
   /** Lote al que pertenecen los registros creados. */
   readonly batchId: string
@@ -38,6 +53,11 @@ export interface NormalizeOptions {
   readonly now: () => string
   /** Pais global. Solo rellena registros que no traen pais propio. */
   readonly defaultCountry?: Country | null
+  /**
+   * Valores para toda la carga, escritos a mano cuando el archivo no trae la
+   * columna. Solo rellenan huecos: nunca pisan un dato que venga en la fila.
+   */
+  readonly defaults?: FieldDefaults
 }
 
 export interface NormalizeSheetResult {
@@ -63,11 +83,22 @@ export function buildOriginalKeys(headers: readonly string[]): string[] {
   })
 }
 
-function applyDefaultCountry(fields: NormalizedFields, country: Country | null | undefined): void {
-  if (!country) return
-  if (fields.country.trim() === '') {
-    fields.country = country.name
+/**
+ * Rellena los huecos con los valores por defecto.
+ *
+ * La regla es la misma para el pais y para los campos escritos a mano: solo se
+ * escribe si la fila no traia nada. Un valor por defecto ayuda cuando falta un
+ * dato; pisar el que si vino seria perder informacion de entrada (principio 2
+ * de la especificacion).
+ */
+function applyDefaults(fields: NormalizedFields, options: NormalizeOptions): void {
+  for (const field of DEFAULTABLE_FIELDS) {
+    const value = collapseWhitespace(options.defaults?.[field] ?? '')
+    if (value !== '' && fields[field].trim() === '') fields[field] = value
   }
+
+  const country = options.defaultCountry
+  if (country && fields.country.trim() === '') fields.country = country.name
 }
 
 export function normalizeSheet(
@@ -106,7 +137,7 @@ export function normalizeSheet(
       return
     }
 
-    applyDefaultCountry(fields, options.defaultCountry)
+    applyDefaults(fields, options)
 
     records.push(
       createRecord({
@@ -137,7 +168,7 @@ export function normalizeManualEntry(
   for (const [key, value] of Object.entries(input)) {
     fields[key as NormalizedField] = collapseWhitespace(value ?? '')
   }
-  applyDefaultCountry(fields, options.defaultCountry)
+  applyDefaults(fields, options)
 
   return createRecord({
     id: options.newId(),

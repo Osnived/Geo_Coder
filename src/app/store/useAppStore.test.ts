@@ -55,6 +55,7 @@ beforeEach(() => {
     displacedColumns: {},
     importError: null,
     activeManualBatchId: null,
+    importDefaults: {},
     retry: DEFAULT_RETRY_SETTINGS,
     filters: { text: '', source: 'all', status: 'all', onlyWithIssues: false, batchId: 'all' },
   })
@@ -654,5 +655,85 @@ describe('reintentos de la geocodificacion', () => {
       minimumSuccessPercentage: 100,
       maxRetries: 0,
     })
+  })
+})
+
+/**
+ * Valor escrito a mano para toda una carga, cuando el Excel no trae la columna.
+ *
+ * Es el caso real: un archivo de tiendas de una sola cadena no repite el nombre
+ * de la cadena en cada fila porque quien lo hizo ya sabia de quien era.
+ */
+describe('completar datos que faltan en la carga', () => {
+  it('aplica el cliente escrito a mano a todos los registros del archivo', async () => {
+    const file = csvFile(
+      'tiendas.csv',
+      'NOMBRE DEL LOCAL,CIUDAD\nPrado,Barranquilla\nNorte,Bogota\n',
+    )
+    await useAppStore.getState().openFile(file)
+
+    useAppStore.getState().setImportDefault('client', 'Olimpica')
+    await useAppStore.getState().confirmImport()
+
+    const { records } = useAppStore.getState()
+    expect(records).toHaveLength(2)
+    expect(records.map((record) => record.fields.client)).toEqual(['Olimpica', 'Olimpica'])
+    // Y el nombre del local sigue siendo el de cada fila.
+    expect(records.map((record) => record.fields.location_name)).toEqual(['Prado', 'Norte'])
+  })
+
+  it('no pisa el cliente de las filas que si lo traen', async () => {
+    const file = csvFile('tiendas.csv', 'CLIENTE,NOMBRE DEL LOCAL\nExito,Country\n,Prado\n')
+    await useAppStore.getState().openFile(file)
+
+    useAppStore.getState().setImportDefault('client', 'Olimpica')
+    await useAppStore.getState().confirmImport()
+
+    expect(useAppStore.getState().records.map((record) => record.fields.client)).toEqual([
+      'Exito',
+      'Olimpica',
+    ])
+  })
+
+  it('el valor se olvida al quitar el archivo', async () => {
+    const file = csvFile('tiendas.csv', 'NOMBRE DEL LOCAL\nPrado\n')
+    await useAppStore.getState().openFile(file)
+    useAppStore.getState().setImportDefault('client', 'Olimpica')
+
+    useAppStore.getState().clearImport()
+
+    expect(useAppStore.getState().importDefaults).toEqual({})
+  })
+
+  /** Dos archivos distintos son de dos cadenas distintas. */
+  it('cargar otro archivo no arrastra el valor del anterior', async () => {
+    await useAppStore.getState().openFile(csvFile('a.csv', 'NOMBRE DEL LOCAL\nPrado\n'))
+    useAppStore.getState().setImportDefault('client', 'Olimpica')
+    await useAppStore.getState().confirmImport()
+
+    await useAppStore.getState().openFile(csvFile('b.csv', 'NOMBRE DEL LOCAL\nCentro\n'))
+    expect(useAppStore.getState().importDefaults).toEqual({})
+
+    await useAppStore.getState().confirmImport()
+
+    const { records } = useAppStore.getState()
+    expect(records[0]?.fields.client).toBe('Olimpica')
+    expect(records[1]?.fields.client).toBe('')
+  })
+
+  it('el valor por defecto entra en la consulta de geocodificacion', async () => {
+    const file = csvFile('tiendas.csv', 'NOMBRE DEL LOCAL,CIUDAD\nPrado,Barranquilla\n')
+    await useAppStore.getState().openFile(file)
+    useAppStore.getState().setImportDefault('client', 'Olimpica')
+    await useAppStore.getState().confirmImport()
+
+    const record = useAppStore.getState().records[0]
+    if (!record) throw new Error('se esperaba un registro')
+
+    const { buildQueries } = await import('@/domain/services/queryBuilder')
+    const queries = buildQueries(record, { sessionCountry: null })
+
+    // Es el motivo de la funcion: sin cliente se pierde una senal del scoring.
+    expect(queries[0]?.text).toContain('Olimpica')
   })
 })

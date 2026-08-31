@@ -101,9 +101,15 @@ export function createExcelBatch(input: {
   }
 }
 
-/** Texto para la interfaz: "tiendas.xlsx · Hoja1" o "Manual — 31/08/2026 08:45". */
+/**
+ * Texto para la interfaz: "tiendas.xlsx · Hoja1" o "Manual — 31/08/2026 08:45".
+ *
+ * En un CSV no hay hojas, asi que el lector usa el nombre del archivo tambien
+ * como nombre de hoja. Repetirlo daria "tiendas.csv · tiendas.csv".
+ */
 export function describeBatch(batch: ImportBatch): string {
-  return batch.sheetName ? `${batch.label} · ${batch.sheetName}` : batch.label
+  if (!batch.sheetName || batch.sheetName === batch.label) return batch.label
+  return `${batch.label} · ${batch.sheetName}`
 }
 
 /** Etiqueta corta del tipo de grupo, para badges y filtros. */

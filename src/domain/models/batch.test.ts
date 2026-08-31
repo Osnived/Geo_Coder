@@ -179,3 +179,30 @@ describe('summarizeBatches', () => {
     expect(byId.get(manual.id)).toBe(2)
   })
 })
+
+describe('describeBatch con CSV', () => {
+  /** Un CSV no tiene hojas: el lector usa el nombre del archivo como hoja. */
+  it('no repite el nombre cuando la hoja es el propio archivo', () => {
+    const batch = createExcelBatch({
+      id: 'g-1',
+      fileName: 'tiendas.csv',
+      sheetName: 'tiendas.csv',
+      importedCount: 3,
+      createdAt: '2026-08-31T13:00:00.000Z',
+    })
+
+    expect(describeBatch(batch)).toBe('tiendas.csv')
+  })
+
+  it('sigue anadiendo la hoja cuando es distinta', () => {
+    const batch = createExcelBatch({
+      id: 'g-1',
+      fileName: 'tiendas.xlsx',
+      sheetName: 'Hoja1',
+      importedCount: 3,
+      createdAt: '2026-08-31T13:00:00.000Z',
+    })
+
+    expect(describeBatch(batch)).toBe('tiendas.xlsx · Hoja1')
+  })
+})

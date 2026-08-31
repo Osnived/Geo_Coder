@@ -3,6 +3,7 @@ import type { Country } from '@/domain/models/country'
 import type { NormalizedField, NormalizedFields } from '@/domain/models/fields'
 import type { EstablishmentRecord, RecordSource } from '@/domain/models/record'
 import type { RecordStatus } from '@/domain/models/status'
+import type { FieldDefaults } from '@/domain/services/recordNormalizer'
 import type { RetrySettings } from '@/domain/services/retryPolicy'
 import type { LoadedWorkbook, SheetPreview, SheetSummary } from '@/infrastructure/excel'
 
@@ -37,12 +38,18 @@ export interface ImportSlice {
   displacedColumns: Readonly<Record<number, number>>
   isLoadingFile: boolean
   importError: string | null
+  /**
+   * Valores escritos a mano que se aplicaran a toda la carga en curso, para los
+   * campos que el archivo no trae. Se olvidan al quitar el archivo.
+   */
+  importDefaults: FieldDefaults
 
   openFile: (file: File) => Promise<void>
   selectSheet: (sheetName: string) => void
   setHeaderRow: (rowNumber: number) => void
   setColumnField: (columnIndex: number, field: NormalizedField | null) => void
   resetMappingToSuggestion: () => void
+  setImportDefault: (field: keyof FieldDefaults, value: string) => void
   clearImport: () => void
   /** Normaliza la hoja con el mapeo actual y agrega los registros. */
   confirmImport: () => Promise<number>
