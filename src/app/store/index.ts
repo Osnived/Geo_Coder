@@ -1,4 +1,5 @@
 export * from './geocoder'
+export * from './places'
 export * from './repository'
 export * from './types'
 export * from './useAppStore'

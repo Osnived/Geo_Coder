@@ -24,3 +24,17 @@ if (typeof Blob !== 'undefined' && typeof Blob.prototype.arrayBuffer !== 'functi
     })
   }
 }
+
+/**
+ * jsdom tampoco implementa `Element.prototype.scrollIntoView`, que existe en
+ * todos los navegadores. Lo usa el desplegable de sugerencias para mantener a
+ * la vista la opcion resaltada al recorrerla con las flechas.
+ *
+ * Se rellena con una funcion vacia: aqui no hay nada que desplazar, y lo que se
+ * quiere probar es la navegacion, no el desplazamiento.
+ */
+if (typeof Element !== 'undefined' && typeof Element.prototype.scrollIntoView !== 'function') {
+  Element.prototype.scrollIntoView = function scrollIntoView(): void {
+    // Sin efecto en jsdom.
+  }
+}

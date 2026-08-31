@@ -1,4 +1,5 @@
 import type { Country } from '@/domain/models/country'
+import { canonicalize } from '@/domain/rules/text'
 
 /**
  * Catalogo de paises para el selector (spec seccion 8).
@@ -57,4 +58,24 @@ export const COUNTRIES: readonly Country[] = (() => {
 
 export function findCountryByCode(code: string): Country | null {
   return BY_CODE.get(code.trim().toUpperCase()) ?? null
+}
+
+/** Busqueda por nombre, sin acentos ni mayusculas. */
+const BY_CANONICAL_NAME = new Map(CATALOG.map((country) => [canonicalize(country.name), country]))
+
+/**
+ * Pais escrito a mano, o `null` si no se reconoce.
+ *
+ * Sirve para que un "colombia" escrito en el formulario acote las sugerencias
+ * igual que si se hubiera elegido en el selector. Acepta tambien el codigo ISO,
+ * porque hay quien escribe "CO".
+ */
+export function findCountryByName(name: string): Country | null {
+  const text = name.trim()
+  if (text === '') return null
+
+  const byName = BY_CANONICAL_NAME.get(canonicalize(text))
+  if (byName) return byName
+
+  return text.length === 2 ? findCountryByCode(text) : null
 }

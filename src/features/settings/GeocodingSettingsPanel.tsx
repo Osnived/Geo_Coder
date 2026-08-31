@@ -76,9 +76,11 @@ export function GeocodingSettingsPanel() {
           label="Porcentaje minimo de exito"
           hint={`Por defecto ${String(DEFAULT_RETRY_SETTINGS.minimumSuccessPercentage)}%. Rango ${String(MIN_SUCCESS_PERCENTAGE)}-${String(MAX_SUCCESS_PERCENTAGE)}.`}
           error={percentageError}
+          htmlFor="minimo-exito"
         >
           <div className="flex items-center gap-2">
             <input
+              id="minimo-exito"
               type="number"
               inputMode="numeric"
               min={MIN_SUCCESS_PERCENTAGE}

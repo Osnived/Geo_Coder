@@ -1,3 +1,4 @@
+import { cloneElement, isValidElement, useId } from 'react'
 import type {
   ButtonHTMLAttributes,
   InputHTMLAttributes,
@@ -68,25 +69,51 @@ export function Select({ className, children, ...props }: SelectHTMLAttributes<H
  * La etiqueta siempre esta escrita y visible: un `placeholder` desaparece al
  * escribir y no lo lee un lector de pantalla como nombre del campo.
  *
- * El texto de error se envuelve en el mismo `<label>` que el control, asi que
- * se anuncia junto al nombre del campo sin tener que generar ids.
+ * La asociacion es explicita, con `htmlFor` y un `id` generado, y no envolviendo
+ * el control en la etiqueta. Envolver parece mas comodo pero convierte **todo**
+ * el texto de dentro en el nombre del campo: la ayuda hacia que "Ciudad" se
+ * llamara "Ciudad Fija un pais en la barra lateral", y el aviso de un
+ * desplegable de sugerencias lo dejaba en "Ciudad Buscando sugerencias".
+ *
+ * El `id` se inyecta en el hijo si es un elemento y no trae uno propio. Cuando
+ * el hijo no es el control en si —un contenedor con el campo y un sufijo, por
+ * ejemplo— hay que pasar `htmlFor` y poner el `id` a mano en el control.
  */
 export function Field({
   label,
   hint,
   error,
+  htmlFor,
   children,
 }: {
   label: string
   hint?: string | undefined
   /** Mensaje de validacion. Sustituye a la ayuda mientras este presente. */
   error?: string | null | undefined
+  /** Id del control, cuando el hijo no es el control directamente. */
+  htmlFor?: string | undefined
   children: ReactNode
 }) {
+  const generatedId = useId()
+
+  const child = isValidElement<{ id?: string }>(children) ? children : null
+  const controlId = htmlFor ?? child?.props.id ?? generatedId
+
+  // Solo se clona si hace falta: si el hijo ya trae id, se respeta.
+  const control =
+    htmlFor === undefined && child !== null && child.props.id === undefined
+      ? cloneElement(child, { id: controlId })
+      : children
+
   return (
-    <label className="flex flex-col gap-1">
-      <span className="text-ink-muted text-xs font-medium tracking-wide uppercase">{label}</span>
-      {children}
+    <div className="flex flex-col gap-1">
+      <label
+        htmlFor={controlId}
+        className="text-ink-muted text-xs font-medium tracking-wide uppercase"
+      >
+        {label}
+      </label>
+      {control}
       {error ? (
         <span className="text-danger text-xs" role="alert">
           <span aria-hidden="true">✕ </span>
@@ -95,7 +122,7 @@ export function Field({
       ) : hint ? (
         <span className="text-ink-muted text-xs">{hint}</span>
       ) : null}
-    </label>
+    </div>
   )
 }
 
@@ -168,23 +195,6 @@ export function Panel({
   )
 }
 
-type CalloutTone = 'danger' | 'warn' | 'accent' | 'ok'
-
-const CALLOUT_STYLES: Record<CalloutTone, string> = {
-  danger: 'bg-danger-soft text-danger border-danger/30',
-  warn: 'bg-warn-soft text-warn border-warn/30',
-  accent: 'bg-accent-soft text-accent border-accent/30',
-  ok: 'bg-ok-soft text-ok border-ok/30',
-}
-
-/** Simbolo por tono: el aviso se entiende tambien en blanco y negro. */
-const CALLOUT_ICONS: Record<CalloutTone, string> = {
-  danger: '✕',
-  warn: '⚠',
-  accent: 'ℹ',
-  ok: '✓',
-}
-
 /**
  * Bloque con titulo dentro de un panel ya existente.
  *
@@ -215,6 +225,23 @@ export function Section({
       {children}
     </section>
   )
+}
+
+type CalloutTone = 'danger' | 'warn' | 'accent' | 'ok'
+
+const CALLOUT_STYLES: Record<CalloutTone, string> = {
+  danger: 'bg-danger-soft text-danger border-danger/30',
+  warn: 'bg-warn-soft text-warn border-warn/30',
+  accent: 'bg-accent-soft text-accent border-accent/30',
+  ok: 'bg-ok-soft text-ok border-ok/30',
+}
+
+/** Simbolo por tono: el aviso se entiende tambien en blanco y negro. */
+const CALLOUT_ICONS: Record<CalloutTone, string> = {
+  danger: '✕',
+  warn: '⚠',
+  accent: 'ℹ',
+  ok: '✓',
 }
 
 export function Callout({ tone, children }: { tone: CalloutTone; children: ReactNode }) {
