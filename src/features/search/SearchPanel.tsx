@@ -4,6 +4,7 @@ import { useNavigation } from '@/app/navigationContext'
 import { getCache, getCacheStats, useAppStore } from '@/app/store'
 import { Button, Callout, EmptyState, Panel } from '@/components/ui/primitives'
 import { StatusBadge } from '@/components/ui/StatusBadge'
+import type { EstablishmentRecord } from '@/domain/models/record'
 import { buildQueries } from '@/domain/services/queryBuilder'
 import { selectRetryTargets, summarizeAttempt } from '@/domain/services/retryPolicy'
 
@@ -11,6 +12,17 @@ import { ScoreBreakdown } from '@/features/results/ScoreBreakdown'
 
 import { GeocodingProgressPanel } from './GeocodingProgressPanel'
 import { QueryPreview } from './QueryPreview'
+import { formatApprox } from './timing'
+
+/** Como se llama un registro en pantalla, con respaldos por si falta el nombre. */
+function recordName(record: EstablishmentRecord): string {
+  return (
+    record.fields.location_name ||
+    record.fields.client ||
+    record.fields.address ||
+    '(registro sin nombre)'
+  )
+}
 
 /** Plan de busqueda y ejecucion de la geocodificacion. */
 export function SearchPanel() {
@@ -40,6 +52,14 @@ export function SearchPanel() {
     (record) => record.status === 'PENDING' || record.status === 'ERROR',
   )
   const retryable = useMemo(() => selectRetryTargets(records), [records])
+
+  /** Nombre del registro en curso, para que el reloj diga de que habla. */
+  const currentRecordName = useMemo(() => {
+    const id = geocoding.currentRecordId
+    if (id === null) return null
+    const record = records.find((entry) => entry.id === id)
+    return record ? recordName(record) : null
+  }, [geocoding.currentRecordId, records])
   const overall = useMemo(() => summarizeAttempt(records), [records])
   // Nominatim admite 1 peticion por segundo y se prueban varias estrategias.
   const estimatedSeconds = pending.length * 2
@@ -100,13 +120,14 @@ export function SearchPanel() {
         <GeocodingProgressPanel
           progress={geocoding}
           minimumSuccessPercentage={retry.minimumSuccessPercentage}
+          {...(currentRecordName === null ? {} : { currentRecordName })}
         />
 
         {geocoding.phase === 'idle' && pending.length > 0 ? (
           <Callout tone="accent">
             Se usa Nominatim (OpenStreetMap), que admite <strong>1 consulta por segundo</strong>.
             Los {pending.length} registro(s) pendientes tardaran del orden de{' '}
-            {formatDuration(estimatedSeconds)}. Si el exito queda por debajo del{' '}
+            {formatApprox(estimatedSeconds * 1000)}. Si el exito queda por debajo del{' '}
             {retry.minimumSuccessPercentage}%, se reintentaran los fallidos hasta {retry.maxRetries}{' '}
             vez(ces) mas. Se puede detener y retomar.
           </Callout>
@@ -168,12 +189,7 @@ export function SearchPanel() {
               open={records.length <= 10}
             >
               <summary className="flex cursor-pointer flex-wrap items-center gap-2 text-sm font-medium">
-                <span>
-                  {record.fields.location_name ||
-                    record.fields.client ||
-                    record.fields.address ||
-                    '(registro sin nombre)'}
-                </span>
+                <span>{recordName(record)}</span>
                 <StatusBadge
                   status={record.status}
                   {...(record.result ? { confidence: record.result.confidence } : {})}
@@ -233,11 +249,4 @@ export function SearchPanel() {
       </div>
     </Panel>
   )
-}
-
-function formatDuration(seconds: number): string {
-  if (seconds < 60) return `${String(seconds)} s`
-  const minutes = Math.ceil(seconds / 60)
-  if (minutes < 60) return `${String(minutes)} min`
-  return `${String(Math.round(minutes / 6) / 10)} h`
 }

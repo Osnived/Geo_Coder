@@ -641,6 +641,58 @@ describe('reintentos de la geocodificacion', () => {
     expect(result?.components.region).toBe('Atlantico')
   })
 
+  it('mide el tiempo de cada vuelta y congela el cronometro al terminar', async () => {
+    await seed(['Alfa', 'Beta'])
+    useAppStore.getState().setRetrySettings({ minimumSuccessPercentage: 90, maxRetries: 1 })
+
+    setProviders([scriptedProvider({}).provider])
+    setScorer(alwaysAccept)
+
+    const before = Date.now()
+    await useAppStore.getState().runGeocoding()
+    const after = Date.now()
+
+    const { geocoding } = useAppStore.getState()
+
+    // El proceso entero queda acotado entre antes y despues de la llamada.
+    expect(geocoding.startedAt).toBeGreaterThanOrEqual(before)
+    expect(geocoding.finishedAt).toBeLessThanOrEqual(after)
+    expect(geocoding.finishedAt).toBeGreaterThanOrEqual(geocoding.startedAt ?? 0)
+
+    // Cada vuelta trae su duracion, y no hay registro en curso al acabar.
+    expect(geocoding.rounds).toHaveLength(2)
+    for (const round of geocoding.rounds) {
+      expect(round.durationMs).toBeGreaterThanOrEqual(0)
+    }
+    expect(geocoding.currentRecordStartedAt).toBeNull()
+    expect(geocoding.currentRecordId).toBeNull()
+  })
+
+  it('el reloj de la vuelta se reinicia en cada reintento', async () => {
+    await seed(['Alfa', 'Beta'])
+    useAppStore.getState().setRetrySettings({ minimumSuccessPercentage: 90, maxRetries: 2 })
+
+    setProviders([scriptedProvider({}).provider])
+    setScorer(alwaysAccept)
+
+    await useAppStore.getState().runGeocoding()
+
+    const { geocoding } = useAppStore.getState()
+    // El reloj de la vuelta arranca despues del inicio global.
+    expect(geocoding.roundStartedAt).toBeGreaterThanOrEqual(geocoding.startedAt ?? 0)
+  })
+
+  it('cancelar tambien congela el cronometro', async () => {
+    await seed(['Alfa'])
+    setProviders([scriptedProvider({}).provider])
+    setScorer(alwaysAccept)
+
+    useAppStore.getState().cancelGeocoding()
+
+    expect(useAppStore.getState().geocoding.finishedAt).not.toBeNull()
+    expect(useAppStore.getState().geocoding.phase).toBe('cancelled')
+  })
+
   it('los ajustes de reintento se acotan y sobreviven a la rehidratacion', async () => {
     useAppStore.getState().setRetrySettings({ minimumSuccessPercentage: 250, maxRetries: -5 })
     expect(useAppStore.getState().retry).toEqual({

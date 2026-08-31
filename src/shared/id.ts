@@ -11,3 +11,11 @@ export function newId(): string {
 export function nowIso(): string {
   return new Date().toISOString()
 }
+
+/**
+ * Milisegundos desde la epoca. Se usa para medir duraciones, donde una cadena
+ * ISO obligaria a reparsearla en cada tic del reloj.
+ */
+export function nowMs(): number {
+  return Date.now()
+}

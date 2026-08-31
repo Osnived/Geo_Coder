@@ -13,7 +13,7 @@ import {
   updateRecordFields,
 } from '@/domain/services/recordNormalizer'
 import { isExcelReadError, readWorkbookFile, type SheetPreview } from '@/infrastructure/excel'
-import { newId, nowIso } from '@/shared/id'
+import { newId, nowIso, nowMs } from '@/shared/id'
 
 import {
   geocodeRecord,
@@ -220,7 +220,11 @@ async function geocodePass(
     if (signal.aborted) break
 
     set((state) => ({
-      geocoding: { ...state.geocoding, currentRecordId: target.id },
+      geocoding: {
+        ...state.geocoding,
+        currentRecordId: target.id,
+        currentRecordStartedAt: nowMs(),
+      },
     }))
     // Estado visible mientras dura la peticion.
     const searching = { ...target, status: 'SEARCHING' as const, updatedAt: nowIso() }
@@ -631,6 +635,10 @@ export const useAppStore = create<AppState>()((set, get) => ({
     percentage: 0,
     stopReason: null,
     lastError: null,
+    startedAt: null,
+    roundStartedAt: null,
+    currentRecordStartedAt: null,
+    finishedAt: null,
   },
 
   runGeocoding: async (ids) => {
@@ -659,6 +667,8 @@ export const useAppStore = create<AppState>()((set, get) => ({
       })
     }
 
+    const startedAt = nowMs()
+
     set({
       geocoding: {
         isRunning: true,
@@ -672,10 +682,15 @@ export const useAppStore = create<AppState>()((set, get) => ({
         percentage: 0,
         stopReason: null,
         lastError: null,
+        startedAt,
+        roundStartedAt: startedAt,
+        currentRecordStartedAt: null,
+        finishedAt: null,
       },
     })
 
     const rounds: GeocodingRound[] = []
+    let roundStartedAt = startedAt
     let targets = firstPass
     let attempt = 0
     let stopReason: 'threshold-met' | 'no-retries-left' | 'nothing-to-retry' | null = null
@@ -693,6 +708,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
         success: summary.success,
         total: summary.total,
         percentage: summary.percentage,
+        durationMs: nowMs() - roundStartedAt,
       })
 
       const decision = decideRetry({
@@ -718,6 +734,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
       attempt += 1
       const wanted = new Set(decision.targetIds)
       targets = scope.filter((record) => wanted.has(record.id))
+      roundStartedAt = nowMs()
 
       set((state) => ({
         geocoding: {
@@ -727,6 +744,8 @@ export const useAppStore = create<AppState>()((set, get) => ({
           processed: 0,
           total: targets.length,
           currentRecordId: null,
+          currentRecordStartedAt: null,
+          roundStartedAt,
         },
       }))
     }
@@ -738,9 +757,11 @@ export const useAppStore = create<AppState>()((set, get) => ({
         ...state.geocoding,
         isRunning: false,
         currentRecordId: null,
+        currentRecordStartedAt: null,
         rounds: [...rounds],
         percentage: finalSummary.percentage,
         stopReason,
+        finishedAt: nowMs(),
         phase: signal.aborted
           ? 'cancelled'
           : finalSummary.percentage >= settings.minimumSuccessPercentage
@@ -775,6 +796,8 @@ export const useAppStore = create<AppState>()((set, get) => ({
         isRunning: false,
         phase: 'cancelled',
         currentRecordId: null,
+        currentRecordStartedAt: null,
+        finishedAt: nowMs(),
       },
     }))
   },

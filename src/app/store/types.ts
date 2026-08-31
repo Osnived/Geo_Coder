@@ -103,6 +103,8 @@ export interface GeocodingRound {
   readonly total: number
   /** Porcentaje de exito del conjunto completo tras esta vuelta. */
   readonly percentage: number
+  /** Lo que tardo la vuelta, en milisegundos. */
+  readonly durationMs: number
 }
 
 export interface GeocodingProgress {
@@ -122,6 +124,26 @@ export interface GeocodingProgress {
   readonly stopReason: 'threshold-met' | 'no-retries-left' | 'nothing-to-retry' | null
   /** Ultimo error de proveedor, para avisar sin detener el proceso. */
   readonly lastError: string | null
+
+  /**
+   * Marcas de tiempo en milisegundos, no un contador.
+   *
+   * El store guarda cuando empezo cada cosa y la interfaz calcula lo que ha
+   * pasado con su propio reloj. Si el store guardara los segundos
+   * transcurridos, cada tic volveria a renderizar todo lo suscrito a el.
+   */
+  readonly startedAt: number | null
+  /** Inicio de la vuelta en curso: se reinicia en cada reintento. */
+  readonly roundStartedAt: number | null
+  /**
+   * Inicio de la consulta del registro que se esta procesando ahora.
+   *
+   * Sirve para ver si uno concreto se ha quedado colgado: con solo el total, un
+   * registro que tarda medio minuto no se distingue de veinte que van rapido.
+   */
+  readonly currentRecordStartedAt: number | null
+  /** `null` mientras corre. Al terminar congela el cronometro. */
+  readonly finishedAt: number | null
 }
 
 export interface GeocodingSlice {

@@ -2,12 +2,15 @@ import type { GeocodingProgress } from '@/app/store/types'
 import { Callout } from '@/components/ui/primitives'
 import { cx } from '@/shared/cx'
 
+import { estimateRemainingMs, formatClock, recordsPerMinute } from './timing'
+import { useTicker } from './useTicker'
+
 /**
- * Estado del procesamiento, contado como una historia.
+ * Estado del procesamiento, contado como una historia y con reloj.
  *
  * No basta un girador: cuando la aplicacion decide reintentar por su cuenta,
  * quien mira la pantalla tiene que poder saber por que lo hizo, en que intento
- * va y con que resultado acabo cada vuelta.
+ * va, cuanto lleva y cuanto le queda.
  */
 
 function Bar({ value, total }: { value: number; total: number }) {
@@ -56,6 +59,36 @@ function SuccessBar({ percentage, minimum }: { percentage: number; minimum: numb
   )
 }
 
+/** Un dato del reloj: etiqueta arriba, cifra grande abajo. */
+function Metric({
+  label,
+  value,
+  hint,
+  tone = 'plain',
+}: {
+  label: string
+  value: string
+  hint?: string | undefined
+  tone?: 'plain' | 'muted'
+}) {
+  return (
+    <div className="flex flex-col">
+      <span className="text-ink-muted text-[0.65rem] font-medium tracking-wide uppercase">
+        {label}
+      </span>
+      <span
+        className={cx(
+          'text-base leading-tight font-semibold tabular-nums',
+          tone === 'muted' && 'text-ink-muted',
+        )}
+      >
+        {value}
+      </span>
+      {hint ? <span className="text-ink-muted text-[0.65rem]">{hint}</span> : null}
+    </div>
+  )
+}
+
 const STOP_MESSAGES = {
   'threshold-met': 'Se alcanzo el porcentaje minimo.',
   'no-retries-left': 'Se alcanzo el maximo de reintentos.',
@@ -66,15 +99,36 @@ const STOP_MESSAGES = {
 export function GeocodingProgressPanel({
   progress,
   minimumSuccessPercentage,
+  currentRecordName,
 }: {
   progress: GeocodingProgress
   minimumSuccessPercentage: number
+  /** Nombre del registro que se esta consultando, si hay alguno. */
+  currentRecordName?: string | undefined
 }) {
+  // El reloj solo avanza mientras hay algo en marcha.
+  const now = useTicker(progress.isRunning)
+
   const idle = progress.phase === 'idle' && progress.rounds.length === 0
   if (idle) return null
 
   const isRetry = progress.attempt > 0
   const lastRound = progress.rounds[progress.rounds.length - 1]
+
+  /** Al terminar, el cronometro se congela en `finishedAt`. */
+  const reference = progress.finishedAt ?? now
+  const totalElapsed = progress.startedAt === null ? 0 : reference - progress.startedAt
+  const roundElapsed = progress.roundStartedAt === null ? 0 : reference - progress.roundStartedAt
+
+  const remaining = progress.isRunning
+    ? estimateRemainingMs({
+        processed: progress.processed,
+        total: progress.total,
+        elapsedMs: roundElapsed,
+      })
+    : null
+
+  const rate = recordsPerMinute(progress.processed, roundElapsed)
 
   return (
     <div className="border-border-subtle bg-surface-muted flex shrink-0 flex-col gap-3 rounded-md border px-3 py-3">
@@ -95,6 +149,61 @@ export function GeocodingProgressPanel({
 
       <Bar value={progress.processed} total={progress.total} />
 
+      {/* Que se esta consultando ahora y desde cuando. */}
+      {progress.isRunning && currentRecordName !== undefined ? (
+        <p className="text-ink-muted flex flex-wrap items-baseline gap-x-2 text-xs">
+          <span aria-hidden="true">◌</span>
+          <span>Consultando</span>
+          <span className="text-ink min-w-0 truncate font-medium">{currentRecordName}</span>
+          {progress.currentRecordStartedAt === null ? null : (
+            <span
+              className={cx(
+                'tabular-nums',
+                // Un registro que pasa de 15 s probablemente esta reintentando
+                // contra el proveedor: conviene que se vea.
+                reference - progress.currentRecordStartedAt > 15_000 && 'text-warn font-medium',
+              )}
+            >
+              {formatClock(reference - progress.currentRecordStartedAt)}
+            </span>
+          )}
+        </p>
+      ) : null}
+
+      {/*
+        El reloj. `aria-live="off"` a proposito: un cronometro que se anuncia
+        cada segundo hace inusable un lector de pantalla. Lo que si se anuncia
+        es el cambio de fase y el resultado, mas abajo.
+      */}
+      <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4" aria-live="off">
+        <Metric
+          label={isRetry ? 'Esta vuelta' : 'Transcurrido'}
+          value={formatClock(roundElapsed)}
+        />
+
+        {progress.isRunning ? (
+          <Metric
+            label="Restante"
+            value={remaining === null ? '—' : `~${formatClock(remaining)}`}
+            hint={remaining === null ? 'midiendo el ritmo…' : 'estimado'}
+            tone="muted"
+          />
+        ) : (
+          <Metric label="Total" value={formatClock(totalElapsed)} tone="muted" />
+        )}
+
+        <Metric
+          label="Ritmo"
+          value={rate === null ? '—' : String(rate)}
+          hint="registros/min"
+          tone="muted"
+        />
+
+        {isRetry ? (
+          <Metric label="Total acumulado" value={formatClock(totalElapsed)} tone="muted" />
+        ) : null}
+      </div>
+
       <SuccessBar percentage={progress.percentage} minimum={minimumSuccessPercentage} />
 
       {/* Historial: una linea por vuelta, para poder comparar. */}
@@ -109,6 +218,7 @@ export function GeocodingProgressPanel({
                 {round.success} / {round.total} geocodificados
               </span>
               <span>· {round.percentage}%</span>
+              <span>· {formatClock(round.durationMs)}</span>
             </li>
           ))}
         </ol>
@@ -124,14 +234,15 @@ export function GeocodingProgressPanel({
 
       {!progress.isRunning && progress.stopReason ? (
         <Callout tone={progress.phase === 'completed' ? 'ok' : 'warn'}>
-          Resultado final: <strong>{progress.percentage}%</strong>.{' '}
+          Resultado final: <strong>{progress.percentage}%</strong> en {formatClock(totalElapsed)}.{' '}
           {STOP_MESSAGES[progress.stopReason]}
         </Callout>
       ) : null}
 
       {!progress.isRunning && progress.phase === 'cancelled' ? (
         <Callout tone="warn">
-          Se detuvo a mitad. Lo ya procesado se conserva; puedes volver a lanzarlo.
+          Se detuvo a mitad, tras {formatClock(totalElapsed)}. Lo ya procesado se conserva; puedes
+          volver a lanzarlo.
         </Callout>
       ) : null}
 
