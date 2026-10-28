@@ -419,7 +419,8 @@ export function RecordsTable() {
           <p className="text-ink-muted shrink-0 text-xs">
             Mostrando {visible.length} de {records.length}. Origen:{' '}
             {records.filter((record) => record.source === 'excel').length} importados,{' '}
-            {records.filter((record) => record.source === 'manual').length} manuales.
+            {records.filter((record) => record.source === 'manual').length} manuales,{' '}
+            {records.filter((record) => record.source === 'osm').length} de OpenStreetMap.
           </p>
         ) : null}
       </div>

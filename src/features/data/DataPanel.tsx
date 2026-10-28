@@ -4,6 +4,7 @@ import { useNavigation } from '@/app/navigationContext'
 import { useAppStore } from '@/app/store'
 import { Button } from '@/components/ui/primitives'
 import { Tabs, TabPanel, type TabOption } from '@/components/ui/Tabs'
+import { DiscoveryPanel } from '@/features/discovery/DiscoveryPanel'
 import { ImportPanel } from '@/features/import/ImportPanel'
 import { ManualEntryForm } from '@/features/manual-entry/ManualEntryForm'
 import { GeocodingSettingsPanel } from '@/features/settings/GeocodingSettingsPanel'
@@ -22,11 +23,12 @@ import { GroupList } from './GroupList'
  * delante, antes de lanzar la geocodificacion.
  */
 
-type Method = 'excel' | 'manual'
+type Method = 'excel' | 'manual' | 'osm'
 
 const METHODS: readonly TabOption<Method>[] = [
   { id: 'excel', label: 'Carga masiva' },
   { id: 'manual', label: 'Ingreso manual' },
+  { id: 'osm', label: 'Descubrir en OpenStreetMap' },
 ]
 
 export function DataPanel() {
@@ -49,7 +51,8 @@ export function DataPanel() {
         <div className="px-4 pt-3">
           <h2 className="text-sm font-semibold">Ingreso de datos</h2>
           <p className="text-ink-muted mt-0.5 mb-2 text-xs">
-            Todo se procesa en tu navegador. Cada carga forma su propio grupo.
+            Cada carga forma su propio grupo. Todo se procesa en tu navegador, salvo las búsquedas
+            en OpenStreetMap.
           </p>
         </div>
 
@@ -59,7 +62,9 @@ export function DataPanel() {
 
         {/* El unico bloque que crece: se desplaza por dentro. */}
         <TabPanel id={method} className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-          {method === 'excel' ? <ImportPanel /> : <ManualEntryForm />}
+          {method === 'excel' ? <ImportPanel /> : null}
+          {method === 'manual' ? <ManualEntryForm /> : null}
+          {method === 'osm' ? <DiscoveryPanel /> : null}
         </TabPanel>
       </section>
 

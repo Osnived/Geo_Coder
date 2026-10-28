@@ -12,12 +12,13 @@ import {
 } from '@/domain/models/batch'
 import { RECORD_STATUSES, type RecordStatus } from '@/domain/models/status'
 import {
+  buildAttributionSheet,
   buildExport,
   DEFAULT_SECTIONS,
   selectForExport,
   type ExportSections,
 } from '@/domain/services/exportBuilder'
-import { downloadBlob, exportFileName, writeSheetToBlob } from '@/infrastructure/excel'
+import { downloadBlob, exportFileName, writeWorkbookToBlob } from '@/infrastructure/excel'
 
 /**
  * Exportacion a .xlsx (spec seccion 17).
@@ -116,7 +117,14 @@ export function ExportPanel() {
     setIsWorking(true)
     setError(null)
 
-    void writeSheetToBlob(sheet)
+    // La hoja de atribucion solo aparece si hay datos de OpenStreetMap.
+    const attribution = buildAttributionSheet(selected)
+    const sheets = [
+      { name: 'Resultados', sheet },
+      ...(attribution ? [{ name: 'Fuentes', sheet: attribution, asTable: false }] : []),
+    ]
+
+    void writeWorkbookToBlob(sheets)
       .then((blob) => {
         const name = exportFileName()
         downloadBlob(blob, name)

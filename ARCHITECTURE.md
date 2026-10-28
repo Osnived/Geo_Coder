@@ -49,6 +49,7 @@ src/
 │   └── storage/                   IndexedDB (Dexie) y migraciones
 ├── providers/
 │   ├── nominatim/  photon/        geocodificadores y sugerencias de lugares
+│   ├── overpass/                  descubrimiento de locales por marca (OpenStreetMap)
 │   └── ai/                        asistente sobre modelo local
 └── shared/                        países, ids, configuración, utilidades
 ```

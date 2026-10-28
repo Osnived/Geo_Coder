@@ -70,3 +70,18 @@ export const CONFIDENCE_CAPS = {
 
 /** Diferencia por debajo de la cual dos candidatos se consideran empatados. */
 export const AMBIGUITY_DELTA = 0.05
+
+/**
+ * Overpass es el servicio de consultas de OpenStreetMap. Su politica pide un
+ * uso justo: una peticion a la vez. No se reintenta en automatico; el usuario
+ * vuelve a pulsar Buscar si la respuesta falla.
+ */
+export const OVERPASS_POLICY: RequestPolicy = {
+  requestsPerSecond: 1,
+  maxRetries: 0,
+  timeoutMs: 120_000,
+  batchSize: 1,
+}
+
+/** Tiempo maximo que el servidor de Overpass dedica a una consulta. */
+export const OVERPASS_QUERY_TIMEOUT_SECONDS = 90

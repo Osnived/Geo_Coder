@@ -7,6 +7,7 @@ import { emptyComponents } from '../models/geocode'
 import type { EstablishmentRecord } from '../models/record'
 
 import {
+  buildAttributionSheet,
   buildExport,
   collectOriginalColumns,
   formatCoordinates,
@@ -379,5 +380,25 @@ describe('selectForExport', () => {
 
   it('un grupo inexistente no devuelve nada', () => {
     expect(selectForExport(records, { groupIds: ['g-9'] })).toEqual([])
+  })
+})
+
+describe('hoja de atribucion', () => {
+  it('no aparece si no hay locales de OpenStreetMap', () => {
+    expect(buildAttributionSheet([imported({})])).toBeNull()
+  })
+
+  it('cita a OpenStreetMap cuando hay locales de esa fuente', () => {
+    const sheet = buildAttributionSheet([imported({}, { source: 'osm' })])
+
+    expect(sheet?.headers).toContain('Atribución')
+    expect(sheet?.rows[0]).toContain('© OpenStreetMap contributors')
+  })
+
+  it('en la columna de origen usa el nombre legible de cada fuente', () => {
+    const sheet = buildExport([imported({}, { source: 'osm' }), imported({})])
+    const origin = sheet.headers.indexOf('Origen')
+
+    expect(sheet.rows.map((row) => row[origin])).toEqual(['OpenStreetMap', 'Excel'])
   })
 })

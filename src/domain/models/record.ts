@@ -2,7 +2,18 @@ import { emptyFields, type NormalizedFields } from './fields'
 import type { GeocodeResult } from './geocode'
 import type { RecordStatus } from './status'
 
-export type RecordSource = 'excel' | 'manual'
+/**
+ * De donde entro el registro. `osm` son locales descubiertos en OpenStreetMap:
+ * traen sus coordenadas desde la fuente, asi que no pasan por geocodificacion.
+ */
+export type RecordSource = 'excel' | 'manual' | 'osm'
+
+/** Nombre legible del origen, para badges, filtros y la exportacion. */
+export function sourceLabel(source: RecordSource): string {
+  if (source === 'excel') return 'Excel'
+  if (source === 'osm') return 'OpenStreetMap'
+  return 'Manual'
+}
 
 /** De donde vino un registro importado, para trazabilidad. */
 export interface ExcelOrigin {

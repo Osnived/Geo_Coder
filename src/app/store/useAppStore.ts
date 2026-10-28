@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 
 import type { NormalizedField } from '@/domain/models/fields'
-import { createExcelBatch, createManualBatch } from '@/domain/models/batch'
+import { createDiscoveryBatch, createExcelBatch, createManualBatch } from '@/domain/models/batch'
 import type { GeocodeQuery } from '@/domain/models/geocode'
 import type { EstablishmentRecord } from '@/domain/models/record'
 import type { RecordStatus } from '@/domain/models/status'
@@ -21,6 +21,9 @@ import {
   type GeocodeOptions,
   type GeocodeOutcome,
 } from '@/domain/services/geocoderService'
+import { buildDiscoveryRecords, parseBrand } from '@/domain/services/placeDiscovery'
+import { ProviderError } from '@/domain/services/geocoderProvider'
+import { completeComponents, hasMissingAddress } from '@/domain/services/reverseGeocoder'
 import { resolveCountry } from '@/domain/services/queryBuilder'
 import {
   acceptResult as accept,
@@ -36,6 +39,7 @@ import {
   summarizeAttempt,
 } from '@/domain/services/retryPolicy'
 import { createScorer } from '@/domain/services/scoringService'
+import { findCountryByCode } from '@/shared/countries'
 import {
   AMBIGUITY_DELTA,
   CONFIDENCE_CAPS,
@@ -44,6 +48,7 @@ import {
 } from '@/shared/config/geocoding'
 
 import { DEFAULT_AI_SETTINGS, getAssistant, type AiSettings } from './assistant'
+import { getDiscoveryProvider, getReverseGeocoder } from './discovery'
 import { getProviders } from './geocoder'
 import { getRepository } from './repository'
 import type { AppState, GeocodingRound } from './types'
@@ -59,6 +64,8 @@ const PREVIEW_SAMPLE_SIZE = 25
 
 /** Controla la cancelacion del lote en curso. */
 let abortController: AbortController | null = null
+/** Busqueda de locales en curso. Una nueva cancela la anterior. */
+let discoveryController: AbortController | null = null
 
 /** Puntuador activo. Se puede sustituir en los tests. */
 let scorer: CandidateScorer = createScorer({ weights: SCORING_WEIGHTS })
@@ -117,6 +124,71 @@ async function retryWithAssistant(
       notes: [...retried.result.notes, 'Consulta propuesta por el asistente de IA.'],
     },
   }
+}
+
+const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
+/**
+ * Completa la direccion de los locales que la fuente dejo incompletos.
+ *
+ * Va uno a uno, respetando el ritmo del servicio. Si el servicio rechaza la
+ * peticion, se detiene y conserva lo ya completado; un fallo puntual solo deja
+ * sin completar ese local.
+ */
+async function enrichPlaces(
+  get: () => AppState,
+  set: (partial: Partial<AppState>) => void,
+  signal: AbortSignal,
+): Promise<void> {
+  const service = getReverseGeocoder()
+  const pending = get().discoveredPlaces.filter(
+    (place) => !place.enrichedAddress && hasMissingAddress(place.components),
+  )
+  if (pending.length === 0) return
+
+  set({ discoveryStatus: 'enriching', discoveryProgress: { done: 0, total: pending.length } })
+
+  let lastRequestAt = 0
+  for (const [index, target] of pending.entries()) {
+    const wait = lastRequestAt + service.minIntervalMs - Date.now()
+    if (wait > 0) await delay(wait)
+    if (signal.aborted) return
+    lastRequestAt = Date.now()
+
+    try {
+      const found = await service.reverse(target, { signal })
+      if (signal.aborted) return
+      if (found) {
+        set({
+          discoveredPlaces: get().discoveredPlaces.map((place) =>
+            place.osmId === target.osmId
+              ? {
+                  ...place,
+                  components: completeComponents(place.components, found),
+                  enrichedAddress: true,
+                }
+              : place,
+          ),
+        })
+      }
+    } catch (error) {
+      if (signal.aborted) return
+      if (
+        error instanceof ProviderError &&
+        (error.code === 'RATE_LIMITED' || error.code === 'FORBIDDEN')
+      ) {
+        set({
+          discoveryError: `${error.message} Se conservan las direcciones ya completadas.`,
+        })
+        break
+      }
+      // Un fallo puntual solo deja sin completar este local.
+    }
+
+    set({ discoveryProgress: { done: index + 1, total: pending.length } })
+  }
+
+  if (!signal.aborted) set({ discoveryStatus: 'ready' })
 }
 
 /** Guarda los ajustes de sesion en un solo sitio. */
@@ -620,6 +692,115 @@ export const useAppStore = create<AppState>()((set, get) => ({
   clearRecords: async () => {
     await getRepository().clear()
     set({ records: [], batches: [], activeManualBatchId: null })
+  },
+
+  // -------------------------------------------------------------- discovery
+  discoveryStatus: 'idle',
+  discoveryQuery: null,
+  discoveredPlaces: [],
+  discoveryError: null,
+  discoveryProgress: { done: 0, total: 0 },
+
+  searchPlaces: async (brand, countryCode) => {
+    const cleanBrand = parseBrand(brand)
+    if (cleanBrand === null) {
+      set({
+        discoveryStatus: 'error',
+        discoveryQuery: null,
+        discoveredPlaces: [],
+        discoveryError:
+          'La marca debe tener de 2 a 60 caracteres: letras, números, espacios, apóstrofes o guiones.',
+      })
+      return
+    }
+
+    const country = findCountryByCode(countryCode)
+    if (country === null) {
+      set({
+        discoveryStatus: 'error',
+        discoveryQuery: null,
+        discoveredPlaces: [],
+        discoveryError: 'Elige un país válido.',
+      })
+      return
+    }
+
+    discoveryController?.abort()
+    discoveryController = new AbortController()
+    const { signal } = discoveryController
+
+    set({
+      discoveryStatus: 'searching',
+      discoveryQuery: null,
+      discoveredPlaces: [],
+      discoveryError: null,
+      discoveryProgress: { done: 0, total: 0 },
+    })
+
+    try {
+      const query = { brand: cleanBrand, country }
+      const places = await getDiscoveryProvider().discover(query, { signal })
+      if (signal.aborted) return
+      set({ discoveryStatus: 'ready', discoveryQuery: query, discoveredPlaces: places })
+      await enrichPlaces(get, set, signal)
+    } catch (error) {
+      if (signal.aborted) return
+      set({ discoveryStatus: 'error', discoveryError: describeError(error) })
+    }
+  },
+
+  importDiscoveredPlaces: async () => {
+    const { discoveryQuery, discoveredPlaces } = get()
+    if (!discoveryQuery || discoveredPlaces.length === 0) return 0
+
+    try {
+      const batchId = newId()
+      const createdAt = nowIso()
+      const records = buildDiscoveryRecords(discoveredPlaces, discoveryQuery, {
+        batchId,
+        newId,
+        now: () => createdAt,
+      })
+      const batch = createDiscoveryBatch({
+        id: batchId,
+        brand: discoveryQuery.brand,
+        countryName: discoveryQuery.country.name,
+        importedCount: records.length,
+        createdAt,
+      })
+
+      const repository = getRepository()
+      await repository.saveBatch(batch)
+      await repository.addMany(records)
+
+      set({
+        records: [...get().records, ...records],
+        batches: [...get().batches, batch],
+        discoveryStatus: 'idle',
+        discoveryQuery: null,
+        discoveredPlaces: [],
+      })
+      return records.length
+    } catch (error) {
+      set({ discoveryError: describeError(error) })
+      return 0
+    }
+  },
+
+  stopEnrichment: () => {
+    discoveryController?.abort()
+    set({ discoveryStatus: 'ready' })
+  },
+
+  clearDiscovery: () => {
+    discoveryController?.abort()
+    set({
+      discoveryStatus: 'idle',
+      discoveryQuery: null,
+      discoveredPlaces: [],
+      discoveryError: null,
+      discoveryProgress: { done: 0, total: 0 },
+    })
   },
 
   // --------------------------------------------------------------- geocoding

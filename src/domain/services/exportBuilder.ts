@@ -1,6 +1,6 @@
 import { batchTypeLabel, describeBatch, formatTimestamp, type ImportBatch } from '../models/batch'
 import { FIELD_LABELS, NORMALIZED_FIELDS, type NormalizedField } from '../models/fields'
-import type { EstablishmentRecord } from '../models/record'
+import { sourceLabel, type EstablishmentRecord } from '../models/record'
 import { STATUS_LABELS } from '../models/status'
 
 /**
@@ -179,6 +179,28 @@ function resultValues(record: EstablishmentRecord): unknown[] {
   ]
 }
 
+/**
+ * Hoja de atribucion de OpenStreetMap, o `null` si no hay locales de esa fuente.
+ *
+ * La licencia ODbL exige citar a los colaboradores de OSM cada vez que se usan
+ * sus datos, asi que la hoja sale solo cuando hay algo que citar.
+ */
+export function buildAttributionSheet(records: readonly EstablishmentRecord[]): ExportSheet | null {
+  if (!records.some((record) => record.source === 'osm')) return null
+
+  return {
+    headers: ['Fuente', 'Licencia', 'Atribución', 'Más información'],
+    rows: [
+      [
+        'OpenStreetMap',
+        'Open Database License (ODbL) 1.0',
+        '© OpenStreetMap contributors',
+        'https://www.openstreetmap.org/copyright',
+      ],
+    ],
+  }
+}
+
 export function buildExport(
   records: readonly EstablishmentRecord[],
   options: ExportOptions = {},
@@ -224,7 +246,7 @@ export function buildExport(
           ]
         : []),
       record.id,
-      record.source === 'excel' ? 'Excel' : 'Manual',
+      sourceLabel(record.source),
       formatTimestamp(record.createdAt),
       formatTimestamp(record.updatedAt),
     ]

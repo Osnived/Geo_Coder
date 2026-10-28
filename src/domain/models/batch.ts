@@ -1,4 +1,4 @@
-import type { RecordSource } from './record'
+import { sourceLabel, type RecordSource } from './record'
 
 /**
  * Grupo (lote): el conjunto de registros que entraron juntos.
@@ -114,7 +114,30 @@ export function describeBatch(batch: ImportBatch): string {
 
 /** Etiqueta corta del tipo de grupo, para badges y filtros. */
 export function batchTypeLabel(batch: ImportBatch): string {
-  return batch.source === 'excel' ? 'Excel' : 'Manual'
+  return sourceLabel(batch.source)
+}
+
+/**
+ * Grupo de locales descubiertos en OpenStreetMap, por marca y pais.
+ *
+ * Como en las demas importaciones, el id llega de fuera: dos busquedas de la
+ * misma marca no deben compartir grupo.
+ */
+export function createDiscoveryBatch(input: {
+  id: string
+  brand: string
+  countryName: string
+  importedCount: number
+  createdAt: string
+}): ImportBatch {
+  return {
+    id: input.id,
+    label: `${input.brand} · ${input.countryName}`,
+    source: 'osm',
+    sheetName: null,
+    importedCount: input.importedCount,
+    createdAt: input.createdAt,
+  }
 }
 
 /**

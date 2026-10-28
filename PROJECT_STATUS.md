@@ -22,22 +22,23 @@ Los 10 MVP del plan están implementados. Nada se ha subido ni fusionado.
 
 Añadido después del plan original:
 
-| Extra                              | Contenido                                                                                                               | Estado |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ------ |
-| Lotes                              | Agrupación por archivo/hoja o inserción manual, con fecha y hora                                                        | ✅     |
-| Navegacion lateral                 | Barra lateral agrupada por etapa, con contadores y selector de pais; plegable en pantallas estrechas                    | ✅     |
-| Agrupacion en el mapa              | Puntos cercanos agrupados en globos con recuento, con interruptor y apertura al pinchar                                 | ✅     |
-| Vistas sin scroll de pagina        | Registros y Busqueda ocupan la pantalla y se desplazan por dentro                                                       | ✅     |
-| Plantilla de carga                 | Excel de ejemplo descargable desde la aplicación, con instrucciones                                                     | ✅     |
-| Tablas anchas                      | Scroll horizontal arriba sincronizado y scroll vertical interno con cabecera fija                                       | ✅     |
-| Mapa global                        | Todos los registros localizados en un mapa, con selección bidireccional y vuelo con zoom al tocar una tarjeta           | ✅     |
-| **Vista Datos unificada**          | Carga masiva, ingreso manual y grupos recién ingresados en una sola pestaña                                             | ✅     |
-| **Grupos por origen**              | Un grupo por archivo importado y uno por sesión de entrada manual, con id propio                                        | ✅     |
-| **Reintentos por lote**            | Porcentaje mínimo y número de reintentos configurables; solo se reintenta lo que falló                                  | ✅     |
-| **Revisión a pantalla completa**   | Resumen de dos líneas, cola agrupada por origen con filtros, mapa dominante y detalle en pestañas                       | ✅     |
-| **Exportación por grupo**          | Selección de uno, varios o todos los grupos y de qué bloques de columnas incluir                                        | ✅     |
-| **Columnas geográficas separadas** | Estado/Departamento, Municipio/Ciudad, Código ZIP, Dirección encontrada, Coordenadas, Latitud, Longitud                 | ✅     |
-| **Accesibilidad**                  | Estados con símbolo además de color, etiquetas visibles, foco visible, pestañas navegables con flechas, contraste 4,5:1 | ✅     |
+| Extra                              | Contenido                                                                                                                | Estado |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ------ |
+| Lotes                              | Agrupación por archivo/hoja o inserción manual, con fecha y hora                                                         | ✅     |
+| Navegacion lateral                 | Barra lateral agrupada por etapa, con contadores y selector de pais; plegable en pantallas estrechas                     | ✅     |
+| Agrupacion en el mapa              | Puntos cercanos agrupados en globos con recuento, con interruptor y apertura al pinchar                                  | ✅     |
+| Vistas sin scroll de pagina        | Registros y Busqueda ocupan la pantalla y se desplazan por dentro                                                        | ✅     |
+| Plantilla de carga                 | Excel de ejemplo descargable desde la aplicación, con instrucciones                                                      | ✅     |
+| Tablas anchas                      | Scroll horizontal arriba sincronizado y scroll vertical interno con cabecera fija                                        | ✅     |
+| Mapa global                        | Todos los registros localizados en un mapa, con selección bidireccional y vuelo con zoom al tocar una tarjeta            | ✅     |
+| **Vista Datos unificada**          | Carga masiva, ingreso manual y grupos recién ingresados en una sola pestaña                                              | ✅     |
+| **Grupos por origen**              | Un grupo por archivo importado y uno por sesión de entrada manual, con id propio                                         | ✅     |
+| **Reintentos por lote**            | Porcentaje mínimo y número de reintentos configurables; solo se reintenta lo que falló                                   | ✅     |
+| **Revisión a pantalla completa**   | Resumen de dos líneas, cola agrupada por origen con filtros, mapa dominante y detalle en pestañas                        | ✅     |
+| **Exportación por grupo**          | Selección de uno, varios o todos los grupos y de qué bloques de columnas incluir                                         | ✅     |
+| **Columnas geográficas separadas** | Estado/Departamento, Municipio/Ciudad, Código ZIP, Dirección encontrada, Coordenadas, Latitud, Longitud                  | ✅     |
+| **Descubrir en OpenStreetMap**     | Busca locales de una marca en un pais con Overpass; se revisan y se guardan como grupo con coordenadas y atribucion ODbL | ✅     |
+| **Accesibilidad**                  | Estados con símbolo además de color, etiquetas visibles, foco visible, pestañas navegables con flechas, contraste 4,5:1  | ✅     |
 
 ## Verificación
 
@@ -45,7 +46,7 @@ Añadido después del plan original:
 | ------------------- | ----------------------------------------------------------------------------------- |
 | `npm run lint`      | Sin errores ni avisos                                                               |
 | `npm run typecheck` | Sin errores (TS estricto, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`) |
-| `npm test`          | 464 tests, todos en verde                                                           |
+| `npm test`          | 621 tests, todos en verde                                                           |
 | `npm run build`     | Correcto                                                                            |
 | `npm audit`         | 0 vulnerabilidades                                                                  |
 

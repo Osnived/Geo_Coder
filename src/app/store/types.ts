@@ -4,6 +4,7 @@ import type { NormalizedField, NormalizedFields } from '@/domain/models/fields'
 import type { EstablishmentRecord, RecordSource } from '@/domain/models/record'
 import type { RecordStatus } from '@/domain/models/status'
 import type { FieldDefaults } from '@/domain/services/recordNormalizer'
+import type { DiscoveredPlace, DiscoveryQuery } from '@/domain/services/placeDiscovery'
 import type { RetrySettings } from '@/domain/services/retryPolicy'
 import type { LoadedWorkbook, SheetPreview, SheetSummary } from '@/infrastructure/excel'
 
@@ -164,6 +165,26 @@ export interface ReviewSlice {
   pickCoordinates: (id: string, latitude: number, longitude: number) => Promise<void>
 }
 
+export type DiscoveryStatus = 'idle' | 'searching' | 'enriching' | 'ready' | 'error'
+
+export interface DiscoverySlice {
+  readonly discoveryStatus: DiscoveryStatus
+  /** Busqueda que produjo los resultados actuales. */
+  readonly discoveryQuery: DiscoveryQuery | null
+  /** Locales encontrados, todavia sin guardar. */
+  readonly discoveredPlaces: readonly DiscoveredPlace[]
+  readonly discoveryError: string | null
+  /** Avance de la geocodificacion inversa: locales ya tratados y total. */
+  readonly discoveryProgress: { readonly done: number; readonly total: number }
+  /** Busca locales de una marca en un pais. Solo muestra resultados; no guarda nada. */
+  searchPlaces: (brand: string, countryCode: string) => Promise<void>
+  /** Guarda los locales encontrados como un grupo nuevo. Devuelve cuantos entraron. */
+  importDiscoveredPlaces: () => Promise<number>
+  /** Detiene la geocodificacion inversa y conserva lo ya completado. */
+  stopEnrichment: () => void
+  clearDiscovery: () => void
+}
+
 export interface AiSlice {
   ai: AiSettings
   setAiSettings: (settings: Partial<AiSettings>) => void
@@ -181,4 +202,5 @@ export type AppState = SettingsSlice &
   RecordsSlice &
   GeocodingSlice &
   ReviewSlice &
+  DiscoverySlice &
   AiSlice

@@ -10,7 +10,7 @@ import {
   formatTimestamp,
   summarizeBatches,
 } from '@/domain/models/batch'
-import type { EstablishmentRecord } from '@/domain/models/record'
+import type { EstablishmentRecord, RecordSource } from '@/domain/models/record'
 import type { RecordStatus } from '@/domain/models/status'
 import { cx } from '@/shared/cx'
 
@@ -53,10 +53,17 @@ function headlineStatus(progress: Progress): RecordStatus {
   return 'FOUND'
 }
 
+/** Icono por origen. Se dice con palabras en la tarjeta, asi que es solo decorativo. */
+const GROUP_ICONS: Record<RecordSource, string> = {
+  excel: '📄',
+  osm: '📍',
+  manual: '✎',
+}
+
 function GroupCard({
   title,
   typeLabel,
-  isExcel,
+  icon,
   createdAt,
   progress,
   isActiveManual,
@@ -65,7 +72,8 @@ function GroupCard({
 }: {
   title: string
   typeLabel: string
-  isExcel: boolean
+  /** Icono decorativo del tipo de origen. */
+  icon: string
   createdAt: string
   progress: Progress
   isActiveManual: boolean
@@ -86,7 +94,7 @@ function GroupCard({
           <p className="flex items-center gap-2 text-sm font-medium">
             {/* Decorativo: el tipo se dice con palabras justo debajo. */}
             <span aria-hidden="true" className="text-ink-muted">
-              {isExcel ? '📄' : '✎'}
+              {icon}
             </span>
             <span className="truncate" title={title}>
               {title}
@@ -176,7 +184,7 @@ export function GroupList() {
           key={batch.id}
           title={describeBatch(batch)}
           typeLabel={batchTypeLabel(batch)}
-          isExcel={batch.source === 'excel'}
+          icon={GROUP_ICONS[batch.source]}
           createdAt={batch.createdAt}
           progress={progress}
           isActiveManual={batch.id === activeManualBatchId}

@@ -25,7 +25,7 @@ import { buildUrl, fetchJson } from '../http'
 const ENDPOINT = 'https://nominatim.openstreetmap.org/search'
 const DEFAULT_LIMIT = 5
 
-interface NominatimAddress {
+export interface NominatimAddress {
   road?: string
   house_number?: string
   city?: string
@@ -51,7 +51,7 @@ interface NominatimPlace {
   address?: NominatimAddress
 }
 
-function toComponents(address: NominatimAddress | undefined): AddressComponents {
+export function toComponents(address: NominatimAddress | undefined): AddressComponents {
   if (!address) return emptyComponents()
 
   return {
